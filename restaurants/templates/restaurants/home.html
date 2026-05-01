@@ -1,0 +1,104 @@
+{% extends "restaurants/base.html" %}
+{% load static %}
+
+{% block title %}Kain Tayo | Discover Nearby Restaurants{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="hero-copy">
+        <div id="homeOnboardingMount"></div>
+        <p class="hero-kicker">Your AI Food Companion</p>
+        <h1>Find the right place to eat in seconds, not after endless scrolling.</h1>
+        <p class="hero-subtext">
+            Discover nearby restaurants that match your budget, cravings, and vibe with smart local search.
+        </p>
+        <form class="hero-search" action="/search/" method="get">
+            <input
+                id="homeQueryInput"
+                name="q"
+                type="text"
+                placeholder="Try: budget under 500, korean, nearby, open now"
+            />
+            <button id="homeVoiceBtn" class="icon-btn home-voice-btn" type="button" aria-label="Tell me what you want">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M12 4C10.3 4 9 5.3 9 7V12C9 13.7 10.3 15 12 15C13.7 15 15 13.7 15 12V7C15 5.3 13.7 4 12 4Z" stroke="currentColor" stroke-width="1.8"/>
+                    <path d="M6.5 11.5C6.5 14.5 8.8 17 12 17C15.2 17 17.5 14.5 17.5 11.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    <path d="M12 17V20" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    <path d="M9.5 20H14.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>
+            </button>
+            <button class="btn primary" type="submit">Search Now</button>
+        </form>
+        <p class="helper-text"><a href="/ai-search/">Use AI Search instead</a> for grounded web-based restaurant suggestions.</p>
+        <div class="recommendation-chips" id="recommendationChips">
+            <button class="chip clickable-chip" type="button" data-query="chicken near me">Chicken</button>
+            <button class="chip clickable-chip" type="button" data-query="pizza under 500 near me">Pizza</button>
+            <button class="chip clickable-chip" type="button" data-query="korean open now nearby">Korean</button>
+            <button class="chip clickable-chip" type="button" data-query="quiet date place under 800">Date Night</button>
+            <button class="chip clickable-chip" type="button" data-query="burger budget meal nearby">Burgers</button>
+        </div>
+        <p id="homeVoiceStatus" class="helper-text">Tap the mic and say your craving naturally.</p>
+        <div class="manual-location-grid home-manual-location-grid">
+            <input id="homeCountryInput" type="text" placeholder="Country (e.g., Philippines)" />
+            <input id="homeRegionInput" type="text" placeholder="State/Region (e.g., NCR)" />
+            <input id="homeCityInput" type="text" placeholder="City (e.g., Quezon City)" />
+            <button id="homeSetLocationBtn" class="btn ghost" type="button">Set Location</button>
+        </div>
+        <p id="homeLocationStatus" class="helper-text">Showing default picks. Set location to load nearby API results.</p>
+    </div>
+    <div class="hero-panel">
+        <div class="mini-card">
+            <p>Sample Voice Query</p>
+            <h3>"Cheap samgyupsal near me open now"</h3>
+        </div>
+        <div class="mini-card highlight">
+            <p>Interpreted Filters</p>
+            <h3>Budget under 500, Korean, nearby, open now</h3>
+        </div>
+    </div>
+</section>
+
+<section class="grid-section">
+    <div class="section-head">
+        <h2>Nearby Restaurants</h2>
+        <a href="/nearby/">See all</a>
+    </div>
+    <div class="restaurant-grid" id="nearbyGrid">
+        {% for restaurant in nearby_spots %}
+        <a class="restaurant-card card-link" href="/restaurant/{{ restaurant.id }}/">
+            <div class="card-thumb card-thumb-default">{{ restaurant.cuisine|slice:":1"|upper }}</div>
+            <div class="chip-row">
+                <span class="chip">{{ restaurant.cuisine|title }}</span>
+                <span class="chip">Rating {{ restaurant.rating }}</span>
+            </div>
+            <h3>{{ restaurant.name }}</h3>
+            <p>{{ restaurant.description|truncatechars:96 }}</p>
+            <div class="card-meta">
+                <span>{{ restaurant.average_cost_for_two }} / 2 pax</span>
+                <span>{% if restaurant.is_open_now %}Open{% else %}Closed{% endif %}</span>
+            </div>
+        </a>
+        {% empty %}
+        <p class="empty-state">No nearby restaurants yet. Try again after location is detected.</p>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="grid-section">
+    <div class="section-head">
+        <h2>Popular Right Now</h2>
+    </div>
+    <div class="restaurant-grid compact">
+        {% for restaurant in trending %}
+        <a class="restaurant-card compact-card card-link" href="/restaurant/{{ restaurant.id }}/">
+            <h3>{{ restaurant.name }}</h3>
+            <p>{{ restaurant.address }}</p>
+        </a>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'restaurants/js/home.js' %}"></script>
+{% endblock %}

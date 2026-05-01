@@ -1,0 +1,101 @@
+{% extends "restaurants/base.html" %}
+
+{% block title %}{{ restaurant.name }} | Kain Tayo{% endblock %}
+
+{% block content %}
+<section class="grid-section">
+    <a
+        href="/search/"
+        class="btn ghost"
+        onclick="if (window.history.length > 1) { event.preventDefault(); window.history.back(); }"
+    >
+        Back to search
+    </a>
+    <article class="restaurant-card detail-card">
+        {% if is_external and restaurant.photo_name %}
+        <img class="result-photo detail-photo" src="/api/place-photo/?name={{ restaurant.photo_name|urlencode }}&max_width=1200" alt="{{ restaurant.name }}" />
+        {% endif %}
+        <h1>{{ restaurant.name }}</h1>
+        <p>{{ restaurant.address }}</p>
+        {% if smart_detail.summary %}
+        <p class="detail-summary">{{ smart_detail.summary }}</p>
+        {% endif %}
+        {% if smart_detail.bullets %}
+        <div class="parsed-filters detail-badges">
+            {% for bullet in smart_detail.bullets %}
+            <span>{{ bullet }}</span>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <details class="result-item" open>
+            <summary><strong>Quick Answer</strong></summary>
+            <p class="detail-summary">{{ smart_detail.quick_answer }}</p>
+        </details>
+
+        {% if smart_detail.branch_contact %}
+        <details class="result-item">
+            <summary><strong>Branch &amp; Contact</strong></summary>
+            <ul>
+                {% for item in smart_detail.branch_contact %}
+                <li>{{ item }}</li>
+                {% endfor %}
+            </ul>
+        </details>
+        {% endif %}
+
+        {% if smart_detail.menu_price_snapshot %}
+        <details class="result-item">
+            <summary><strong>Menu &amp; Price Snapshot</strong></summary>
+            <ul>
+                {% for item in smart_detail.menu_price_snapshot %}
+                <li>{{ item }}</li>
+                {% endfor %}
+            </ul>
+        </details>
+        {% endif %}
+
+        <p class="detail-summary">
+            {% if restaurant.summary %}
+            {{ restaurant.summary }}
+            {% elif restaurant.description %}
+            {{ restaurant.description }}
+            {% else %}
+            Explore this restaurant's details and decide faster with Kain Tayo.
+            {% endif %}
+        </p>
+
+        <div class="parsed-filters detail-badges">
+            <span>Rating: {{ restaurant.rating }}</span>
+            {% if restaurant.average_cost_for_two %}<span>Budget for 2: PHP {{ restaurant.average_cost_for_two }}</span>{% endif %}
+            {% if restaurant.price_level %}<span>Price level: {{ restaurant.price_level }}</span>{% endif %}
+            {% if is_external %}
+            {% if restaurant.open_now %}
+            <span>Open now</span>
+            {% else %}
+            <span>Currently closed</span>
+            {% endif %}
+            {% else %}
+            <span>{% if restaurant.is_open_now %}Open now{% else %}Currently closed{% endif %}</span>
+            {% endif %}
+        </div>
+
+        <div class="hero-actions">
+            {% if is_external and restaurant.maps_url %}
+            <a class="btn ghost" href="{{ restaurant.maps_url }}" target="_blank" rel="noreferrer">Get directions</a>
+            {% elif not is_external %}
+            <a class="btn ghost" href="https://www.google.com/maps/search/?api=1&query={{ restaurant.latitude }},{{ restaurant.longitude }}" target="_blank" rel="noreferrer">Get directions</a>
+            {% endif %}
+        </div>
+
+        {% if is_external %}
+        <div class="hero-actions">
+            {% if restaurant.website %}<a class="btn primary" href="{{ restaurant.website }}" target="_blank" rel="noreferrer">Visit website</a>{% endif %}
+            {% if restaurant.maps_url %}<a class="btn ghost" href="{{ restaurant.maps_url }}" target="_blank" rel="noreferrer">Open in Google Maps</a>{% endif %}
+        </div>
+        {% if restaurant.phone %}<p><strong>Phone:</strong> {{ restaurant.phone }}</p>{% endif %}
+        {% if restaurant.photo_author %}<p class="photo-credit">Photo: {{ restaurant.photo_author }}</p>{% endif %}
+        {% endif %}
+    </article>
+</section>
+{% endblock %}

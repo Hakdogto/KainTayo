@@ -1,0 +1,45 @@
+{% extends "restaurants/base.html" %}
+{% load static %}
+
+{% block title %}Nearby Restaurants | Kain Tayo{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+{% endblock %}
+
+{% block content %}
+<section class="search-shell">
+    <div class="search-panel">
+        <h1>All Nearby Restaurants</h1>
+        <p>Scroll through nearby places based on your current or manual location.</p>
+
+        <div class="location-row">
+            <button id="nearbyUseCurrentBtn" class="btn ghost" type="button">Use My Current Location</button>
+            <p id="nearbyLocationStatus" class="helper-text">No API call yet. Choose location to load nearby places.</p>
+        </div>
+
+        <div class="manual-location-grid">
+            <input id="nearbyCountryInput" type="text" placeholder="Country" />
+            <input id="nearbyRegionInput" type="text" placeholder="State/Region" />
+            <input id="nearbyCityInput" type="text" placeholder="City" />
+            <button id="nearbySetLocationBtn" class="btn ghost" type="button">Set Location</button>
+        </div>
+
+        <div id="nearbyList" class="results-list"></div>
+        <div class="load-more-row">
+            <button id="nearbyLoadMoreBtn" class="btn ghost" type="button" style="display:none;">Load more</button>
+        </div>
+    </div>
+
+    <div class="map-panel">
+        <div id="map"></div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    window.MAPBOX_ACCESS_TOKEN = "{{ mapbox_access_token|escapejs }}";
+</script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="" defer></script>
+<script src="{% static 'restaurants/js/nearby.js' %}" defer></script>
+{% endblock %}

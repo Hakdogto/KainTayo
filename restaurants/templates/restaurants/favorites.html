@@ -1,0 +1,18 @@
+{% extends "restaurants/base.html" %}
+{% load static %}
+
+{% block title %}Favorites | Kain Tayo{% endblock %}
+
+{% block content %}
+<section class="search-shell">
+    <div class="search-panel">
+        <h1>Saved Favorites</h1>
+        <p>Your saved restaurants and food places.</p>
+        <div id="favoritesList" class="results-list"></div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'restaurants/js/favorites.js' %}" defer></script>
+{% endblock %}

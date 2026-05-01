@@ -1,0 +1,76 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Find nearby restaurants and food stores with smart and AI-powered search." />
+    <meta name="theme-color" content="#111827" />
+    <title>{% block title %}Kain Tayo{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Sora:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="stylesheet" href="{% static 'restaurants/css/styles.css' %}" />
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <a class="skip-link" href="#mainContent">Skip to content</a>
+    <header class="topbar">
+        <div class="brand-wrap">
+            <button class="hamburger" id="hamburgerBtn" aria-label="Toggle menu">&#9776;</button>
+            <a class="brand" href="/">
+                <span class="brand-logo" aria-hidden="true">
+                    <img src="{% static 'restaurants/icons/logo.svg' %}" alt="" loading="eager" decoding="async" />
+                </span>
+                Kain Tayo
+            </a>
+        </div>
+        <nav class="main-nav" id="mainNav" aria-label="Primary navigation">
+            <a href="/">Home</a>
+            <a href="/search/">Search</a>
+            <a href="/ai-search/">AI Search</a>
+            <a href="/favorites/">Favorites</a>
+            <a href="/recent/">Recent</a>
+        </nav>
+    </header>
+
+    <main id="mainContent">
+        {% block content %}{% endblock %}
+    </main>
+    <a class="mobile-search-fab" href="/search/" aria-label="Open Search">
+        Search
+    </a>
+    <button id="assistantFab" class="assistant-fab" type="button" aria-label="Open Search Assistant">Assistant</button>
+    <aside id="assistantPanel" class="assistant-panel" aria-hidden="true">
+        <div class="assistant-head">
+            <h3>Search Assistant</h3>
+            <button id="assistantCloseBtn" class="icon-btn" type="button" aria-label="Close Assistant">✕</button>
+        </div>
+        <div id="assistantMessages" class="assistant-messages">
+            <article class="assistant-msg assistant-msg-bot">
+                You can say: cheaper, nearer, open now, korean, quiet date.
+            </article>
+        </div>
+        <div class="assistant-quick-actions">
+            <button class="chip assistant-chip" type="button" data-msg="cheaper">Cheaper</button>
+            <button class="chip assistant-chip" type="button" data-msg="nearer">Nearer</button>
+            <button class="chip assistant-chip" type="button" data-msg="open now">Open now</button>
+        </div>
+        <form id="assistantForm" class="assistant-form">
+            <input id="assistantInput" type="text" placeholder="Refine this search..." />
+            <button class="btn primary" type="submit">Send</button>
+        </form>
+    </aside>
+
+    <script src="{% static 'restaurants/js/main.js' %}" defer></script>
+    <script>
+        if ("serviceWorker" in navigator && window.isSecureContext) {
+            window.addEventListener("load", () => {
+                navigator.serviceWorker.register("/service-worker.js").catch(() => {});
+            });
+        }
+    </script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

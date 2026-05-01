@@ -1,0 +1,73 @@
+{% extends "restaurants/base.html" %}
+{% load static %}
+
+{% block title %}Smart Search | Kain Tayo{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+{% endblock %}
+
+{% block content %}
+<section class="search-shell">
+    <div class="search-panel">
+        <div id="searchOnboardingMount"></div>
+        <h1>Smart Restaurant Search</h1>
+        <p>Tell us what you want and we will find the best nearby matches.</p>
+
+        <div class="search-box search-box-large">
+            <input id="queryInput" type="text" placeholder="Try: date place under PHP 500, quiet, near me" />
+            <button id="voiceBtn" class="icon-btn" title="Voice Search" aria-label="Voice Search">
+                <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M12 4C10.3 4 9 5.3 9 7V12C9 13.7 10.3 15 12 15C13.7 15 15 13.7 15 12V7C15 5.3 13.7 4 12 4Z" stroke="currentColor" stroke-width="1.8"/>
+                    <path d="M6.5 11.5C6.5 14.5 8.8 17 12 17C15.2 17 17.5 14.5 17.5 11.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    <path d="M12 17V20" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    <path d="M9.5 20H14.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>
+            </button>
+            <button id="searchBtn" class="btn primary" type="button">Find Food</button>
+        </div>
+        <div class="recommendation-chips">
+            <button class="chip clickable-chip search-suggestion-chip" type="button" data-query="chicken near me">Chicken</button>
+            <button class="chip clickable-chip search-suggestion-chip" type="button" data-query="pizza under 500 nearby">Pizza</button>
+            <button class="chip clickable-chip search-suggestion-chip" type="button" data-query="korean nearby open now">Korean</button>
+            <button class="chip clickable-chip search-suggestion-chip" type="button" data-query="quiet date place under 500">Quiet Date</button>
+        </div>
+
+        <div class="location-row">
+            <button id="refreshLocationBtn" class="btn ghost" type="button">Use My Current Location</button>
+            <p id="locationStatus" class="helper-text">Using default location until you click a location button.</p>
+        </div>
+
+        <div class="manual-location-grid">
+            <input id="countryInput" type="text" placeholder="Country (e.g., Philippines)" />
+            <input id="regionInput" type="text" placeholder="State/Region (e.g., NCR)" />
+            <input id="cityInput" type="text" placeholder="City (e.g., Quezon City)" />
+            <button id="setManualLocationBtn" class="btn ghost" type="button">Set Location</button>
+        </div>
+
+        <p id="voiceStatus" class="helper-text">Voice search is ready.</p>
+        <p id="searchLiveRegion" class="sr-only" aria-live="polite"></p>
+        <div id="parsedFilters" class="parsed-filters"></div>
+
+        <section>
+            <h2>Matched Restaurants</h2>
+            <div id="resultsList" class="results-list"></div>
+        </section>
+    </div>
+
+    <div class="map-panel">
+        <div id="map"></div>
+    </div>
+</section>
+<div class="mobile-sticky-actions" aria-label="Quick search actions">
+    <button id="mobileSearchActionBtn" class="btn primary" type="button">Search</button>
+    <button id="mobileLocationActionBtn" class="btn ghost" type="button">Location</button>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    window.MAPBOX_ACCESS_TOKEN = "{{ mapbox_access_token|escapejs }}";
+</script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="" defer></script>
+<script src="{% static 'restaurants/js/search.js' %}" defer></script>
+{% endblock %}

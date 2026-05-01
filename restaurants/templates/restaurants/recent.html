@@ -1,0 +1,18 @@
+{% extends "restaurants/base.html" %}
+{% load static %}
+
+{% block title %}Recent Searches | Kain Tayo{% endblock %}
+
+{% block content %}
+<section class="search-shell">
+    <div class="search-panel">
+        <h1>Recent Searches</h1>
+        <p>Your latest smart search history.</p>
+        <div id="historyList" class="results-list"></div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'restaurants/js/recent.js' %}" defer></script>
+{% endblock %}

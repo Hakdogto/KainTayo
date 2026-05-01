@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: kaintayo
+    runtime: python
+    plan: free
+    buildCommand: "sed -i 's/\\r$//' build.sh && bash build.sh"
+    startCommand: "python manage.py migrate && gunicorn ai_restaurant_finder.wsgi:application"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DJANGO_SETTINGS_MODULE
+        value: ai_restaurant_finder.settings
+      - key: DEBUG
+        value: "False"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: WEB_CONCURRENCY
+        value: "2"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ai-foodnav-db
+          property: connectionString
+
+databases:
+  - name: ai-foodnav-db
+    plan: free
