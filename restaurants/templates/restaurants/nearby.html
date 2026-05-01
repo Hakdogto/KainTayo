@@ -17,12 +17,15 @@
             <p id="nearbyLocationStatus" class="helper-text">No API call yet. Choose location to load nearby places.</p>
         </div>
 
-        <div class="manual-location-grid">
-            <input id="nearbyCountryInput" type="text" placeholder="Country" />
-            <input id="nearbyRegionInput" type="text" placeholder="State/Region" />
-            <input id="nearbyCityInput" type="text" placeholder="City" />
-            <button id="nearbySetLocationBtn" class="btn ghost" type="button">Set Location</button>
-        </div>
+        <details class="location-details">
+            <summary>Set location manually</summary>
+            <div class="manual-location-grid">
+                <input id="nearbyCountryInput" type="text" placeholder="Country" />
+                <input id="nearbyRegionInput" type="text" placeholder="State/Region" />
+                <input id="nearbyCityInput" type="text" placeholder="City" />
+                <button id="nearbySetLocationBtn" class="btn ghost" type="button">Set Location</button>
+            </div>
+        </details>
 
         <div id="nearbyList" class="results-list"></div>
         <div class="load-more-row">

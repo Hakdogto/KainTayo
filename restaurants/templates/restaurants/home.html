@@ -38,12 +38,15 @@
             <button class="chip clickable-chip" type="button" data-query="burger budget meal nearby">Burgers</button>
         </div>
         <p id="homeVoiceStatus" class="helper-text">Tap the mic and say your craving naturally.</p>
-        <div class="manual-location-grid home-manual-location-grid">
-            <input id="homeCountryInput" type="text" placeholder="Country (e.g., Philippines)" />
-            <input id="homeRegionInput" type="text" placeholder="State/Region (e.g., NCR)" />
-            <input id="homeCityInput" type="text" placeholder="City (e.g., Quezon City)" />
-            <button id="homeSetLocationBtn" class="btn ghost" type="button">Set Location</button>
-        </div>
+        <details class="location-details">
+            <summary>Set location manually (optional)</summary>
+            <div class="manual-location-grid home-manual-location-grid">
+                <input id="homeCountryInput" type="text" placeholder="Country (e.g., Philippines)" />
+                <input id="homeRegionInput" type="text" placeholder="State/Region (e.g., NCR)" />
+                <input id="homeCityInput" type="text" placeholder="City (e.g., Quezon City)" />
+                <button id="homeSetLocationBtn" class="btn ghost" type="button">Set Location</button>
+            </div>
+        </details>
         <p id="homeLocationStatus" class="helper-text">Showing default picks. Set location to load nearby API results.</p>
     </div>
     <div class="hero-panel">

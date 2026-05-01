@@ -14,6 +14,7 @@ const parsedFilters = document.getElementById("parsedFilters");
 const searchSuggestionChips = document.querySelectorAll(".search-suggestion-chip");
 const mobileSearchActionBtn = document.getElementById("mobileSearchActionBtn");
 const mobileLocationActionBtn = document.getElementById("mobileLocationActionBtn");
+const manualLocationDetails = document.getElementById("manualLocationDetails");
 const searchOnboardingMount = document.getElementById("searchOnboardingMount");
 const SEARCH_STATE_KEY = "smartSearchStateV1";
 const SEARCH_ONBOARDING_KEY = "smartSearchOnboardingSeenV1";
@@ -553,6 +554,9 @@ searchSuggestionChips.forEach((chip) => {
 mobileSearchActionBtn?.addEventListener("click", () => smartSearch());
 mobileLocationActionBtn?.addEventListener("click", () => {
   detectLocation();
+  if (manualLocationDetails) {
+    manualLocationDetails.open = true;
+  }
   countryInput?.focus();
 });
 

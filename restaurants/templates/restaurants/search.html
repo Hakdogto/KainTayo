@@ -37,12 +37,15 @@
             <p id="locationStatus" class="helper-text">Using default location until you click a location button.</p>
         </div>
 
-        <div class="manual-location-grid">
-            <input id="countryInput" type="text" placeholder="Country (e.g., Philippines)" />
-            <input id="regionInput" type="text" placeholder="State/Region (e.g., NCR)" />
-            <input id="cityInput" type="text" placeholder="City (e.g., Quezon City)" />
-            <button id="setManualLocationBtn" class="btn ghost" type="button">Set Location</button>
-        </div>
+        <details id="manualLocationDetails" class="location-details">
+            <summary>Set location manually</summary>
+            <div class="manual-location-grid">
+                <input id="countryInput" type="text" placeholder="Country (e.g., Philippines)" />
+                <input id="regionInput" type="text" placeholder="State/Region (e.g., NCR)" />
+                <input id="cityInput" type="text" placeholder="City (e.g., Quezon City)" />
+                <button id="setManualLocationBtn" class="btn ghost" type="button">Set Location</button>
+            </div>
+        </details>
 
         <p id="voiceStatus" class="helper-text">Voice search is ready.</p>
         <p id="searchLiveRegion" class="sr-only" aria-live="polite"></p>
