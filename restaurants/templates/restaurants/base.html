@@ -39,6 +39,12 @@
         {% block content %}{% endblock %}
     </main>
 
+    <div class="pwa-install-bar" id="pwaInstallBar" hidden>
+        <button id="pwaInstallBtn" class="btn primary pwa-install-btn" type="button">
+            Download App
+        </button>
+    </div>
+
     <script src="{% static 'restaurants/js/main.js' %}" defer></script>
     <script>
         if ("serviceWorker" in navigator && window.isSecureContext) {
