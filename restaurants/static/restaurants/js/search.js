@@ -16,8 +16,10 @@ const mobileSearchActionBtn = document.getElementById("mobileSearchActionBtn");
 const mobileLocationActionBtn = document.getElementById("mobileLocationActionBtn");
 const manualLocationDetails = document.getElementById("manualLocationDetails");
 const searchOnboardingMount = document.getElementById("searchOnboardingMount");
+const searchLayoutButtons = document.querySelectorAll(".layout-toggle-btn[data-layout]");
 const SEARCH_STATE_KEY = "smartSearchStateV1";
-const SEARCH_ONBOARDING_KEY = "smartSearchOnboardingSeenV1";
+const APP_TIPS_DISMISSED_KEY = "kainTayoTipsDismissedV1";
+const SEARCH_LAYOUT_KEY = "smartSearchResultsLayoutV1";
 
 let userLat = 14.5995;
 let userLon = 120.9842;
@@ -28,6 +30,7 @@ let voiceTriggeredSearch = false;
 let lastVoiceTranscript = "";
 let leafletReady = typeof window.L !== "undefined";
 let lastPayload = null;
+let resultsLayout = localStorage.getItem(SEARCH_LAYOUT_KEY) === "swipe" ? "swipe" : "vertical";
 
 function getCookie(name) {
   const cookies = document.cookie ? document.cookie.split(";") : [];
@@ -192,28 +195,44 @@ function announceLive(message) {
   searchLiveRegion.textContent = message;
 }
 
-function mountOnboardingTips(force = false) {
+function applyResultsLayout(layout = resultsLayout) {
+  resultsLayout = layout === "swipe" ? "swipe" : "vertical";
+  resultsList?.classList.toggle("results-list-swipe", resultsLayout === "swipe");
+  resultsList?.classList.toggle("results-list-vertical", resultsLayout === "vertical");
+  searchLayoutButtons.forEach((button) => {
+    const isActive = button.dataset.layout === resultsLayout;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+  });
+  try {
+    localStorage.setItem(SEARCH_LAYOUT_KEY, resultsLayout);
+  } catch (_) {
+    // no-op for storage limitations
+  }
+}
+
+function dismissSearchTips() {
+  localStorage.setItem(APP_TIPS_DISMISSED_KEY, "1");
+  if (searchOnboardingMount) {
+    searchOnboardingMount.innerHTML = "";
+  }
+}
+
+function mountOnboardingTips() {
   if (!searchOnboardingMount) return;
-  const seen = localStorage.getItem(SEARCH_ONBOARDING_KEY) === "1";
-  if (seen && !force) {
-    searchOnboardingMount.innerHTML = `
-      <div class="onboarding-inline-row">
-        <button id="showTipsAgainBtn" class="chip" type="button">Show tips again</button>
-      </div>
-    `;
-    searchOnboardingMount.querySelector("#showTipsAgainBtn")?.addEventListener("click", () => {
-      mountOnboardingTips(true);
-    });
+  const dismissed = localStorage.getItem(APP_TIPS_DISMISSED_KEY) === "1";
+  if (dismissed) {
+    searchOnboardingMount.innerHTML = "";
     return;
   }
 
   searchOnboardingMount.innerHTML = `
     <aside class="onboarding-card" role="note" aria-label="Search tips">
-      <h3>Quick tips for faster search</h3>
+      <button id="onboardingCloseBtn" class="onboarding-close" type="button" aria-label="Close tips">X</button>
+      <h3>Quick tips</h3>
       <ul>
-        <li>Tap the mic to search with voice instantly.</li>
-        <li>Use quick chips like Open now or Under 500 when results are empty.</li>
-        <li>Need broader suggestions? Try <a href="/ai-search/">AI Search</a>.</li>
+        <li>Use a dish, cuisine, budget, or mood.</li>
+        <li>Tap Swipe to browse cards sideways.</li>
       </ul>
       <div class="onboarding-actions">
         <button id="onboardingDismissBtn" class="btn primary" type="button">Got it</button>
@@ -222,17 +241,14 @@ function mountOnboardingTips(force = false) {
     </aside>
   `;
 
-  searchOnboardingMount.querySelector("#onboardingDismissBtn")?.addEventListener("click", () => {
-    localStorage.setItem(SEARCH_ONBOARDING_KEY, "1");
-    mountOnboardingTips(false);
-  });
-  searchOnboardingMount.querySelector("#onboardingLaterBtn")?.addEventListener("click", () => {
-    searchOnboardingMount.innerHTML = "";
-  });
+  searchOnboardingMount.querySelector("#onboardingCloseBtn")?.addEventListener("click", dismissSearchTips);
+  searchOnboardingMount.querySelector("#onboardingDismissBtn")?.addEventListener("click", dismissSearchTips);
+  searchOnboardingMount.querySelector("#onboardingLaterBtn")?.addEventListener("click", dismissSearchTips);
 }
 
 function renderLoadingSkeleton() {
   resultsList.innerHTML = "";
+  applyResultsLayout();
   for (let index = 0; index < 4; index += 1) {
     const card = document.createElement("article");
     card.className = "result-item skeleton-card";
@@ -265,6 +281,7 @@ function renderEmptySuggestions(query = "") {
       <div class="recommendation-chips">${chips}</div>
     </div>
   `;
+  applyResultsLayout();
   resultsList.querySelectorAll(".empty-suggestion-chip").forEach((chip) => {
     chip.addEventListener("click", () => {
       queryInput.value = chip.dataset.query || "";
@@ -292,6 +309,7 @@ async function addFavorite(payload) {
 function renderResults(results) {
   ensureMapReady();
   resultsList.innerHTML = "";
+  applyResultsLayout();
 
   if (!results.length) {
     resultsList.innerHTML = '<p class="empty-state">No matching restaurants yet. Try a broader query.</p>';
@@ -551,6 +569,11 @@ searchSuggestionChips.forEach((chip) => {
     smartSearch();
   });
 });
+searchLayoutButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    applyResultsLayout(button.dataset.layout);
+  });
+});
 mobileSearchActionBtn?.addEventListener("click", () => smartSearch());
 mobileLocationActionBtn?.addEventListener("click", () => {
   detectLocation();
@@ -618,10 +641,10 @@ if (SpeechRecognition) {
 const queryFromUrl = new URLSearchParams(window.location.search).get("q");
 if (queryFromUrl) {
   queryInput.value = queryFromUrl;
+} else {
+  restoreSearchState();
 }
-if (!restoreSearchState() && queryFromUrl) {
-  queryInput.value = queryFromUrl;
-}
+applyResultsLayout();
 mountOnboardingTips();
 
 window.getAssistantContext = () => ({

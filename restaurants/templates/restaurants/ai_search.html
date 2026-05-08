@@ -1,30 +1,45 @@
 {% extends "restaurants/base.html" %}
 {% load static %}
 
-{% block title %}AI Search | Kain Tayo{% endblock %}
+{% block title %}AI Food Chat | Kain Tayo{% endblock %}
 
 {% block content %}
-<section class="search-shell">
-    <div class="search-panel">
+<section class="ai-chat-shell">
+    <div class="ai-chat-panel">
         <div id="aiOnboardingMount"></div>
-        <h1>AI Food Search</h1>
-        <p>Ask naturally. AI returns grounded restaurant and food-store suggestions.</p>
-        <div class="search-box search-box-large">
-            <input id="aiQueryInput" type="text" placeholder="Try: best ramen in makati open late under 500" />
+
+        <header class="ai-chat-header">
+            <div>
+                <p class="hero-kicker">AI Search</p>
+                <h1>AI Food Chat</h1>
+            </div>
+            <div class="ai-chat-meta">
+                <p id="aiStatus" class="helper-text">Ready when you are.</p>
+                <p id="aiQuota" class="helper-text"></p>
+            </div>
+        </header>
+
+        <div id="aiChatLog" class="ai-chat-log" aria-live="polite"></div>
+
+        <div class="ai-prompt-chips" aria-label="Suggested AI prompts">
+            <button class="chip clickable-chip ai-prompt-chip" type="button" data-query="best ramen in makati open late">Ramen open late</button>
+            <button class="chip clickable-chip ai-prompt-chip" type="button" data-query="family friendly pizza near quezon city">Family pizza</button>
+            <button class="chip clickable-chip ai-prompt-chip" type="button" data-query="quiet date place in bgc under 1000">Quiet date</button>
+            <button class="chip clickable-chip ai-prompt-chip" type="button" data-query="cheap chicken meals near me">Cheap chicken</button>
+        </div>
+
+        <form id="aiChatForm" class="ai-chat-composer">
+            <input id="aiQueryInput" type="text" autocomplete="off" placeholder="Ask for food, budget, area, or vibe" />
             <button id="aiVoiceBtn" class="icon-btn" type="button" aria-label="Voice Input">
-                <svg viewBox="0 0 24 24" fill="none">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                     <path d="M12 4C10.3 4 9 5.3 9 7V12C9 13.7 10.3 15 12 15C13.7 15 15 13.7 15 12V7C15 5.3 13.7 4 12 4Z" stroke="currentColor" stroke-width="1.8"/>
                     <path d="M6.5 11.5C6.5 14.5 8.8 17 12 17C15.2 17 17.5 14.5 17.5 11.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
                     <path d="M12 17V20" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
                     <path d="M9.5 20H14.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
                 </svg>
             </button>
-            <button id="aiSearchBtn" class="btn primary" type="button">Run AI Search</button>
-        </div>
-        <p id="aiStatus" class="helper-text">AI calls only run when you click Run AI Search.</p>
-        <p id="aiQuota" class="helper-text"></p>
-        <div id="aiSummary" class="parsed-filters"></div>
-        <div id="aiResultsList" class="results-list"></div>
+            <button id="aiSearchBtn" class="btn primary" type="submit">Send</button>
+        </form>
     </div>
 </section>
 {% endblock %}

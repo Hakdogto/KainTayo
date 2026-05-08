@@ -6,6 +6,8 @@ const countryInput = document.getElementById("nearbyCountryInput");
 const regionInput = document.getElementById("nearbyRegionInput");
 const cityInput = document.getElementById("nearbyCityInput");
 const loadMoreBtn = document.getElementById("nearbyLoadMoreBtn");
+const nearbyLayoutButtons = document.querySelectorAll(".layout-toggle-btn[data-layout]");
+const NEARBY_LAYOUT_KEY = "nearbyResultsLayoutV1";
 
 let map;
 let markers = [];
@@ -15,6 +17,7 @@ let userLon = 120.9842;
 let nextOffset = 0;
 let hasMore = false;
 let leafletReady = typeof window.L !== "undefined";
+let nearbyLayout = localStorage.getItem(NEARBY_LAYOUT_KEY) === "swipe" ? "swipe" : "vertical";
 
 function getCookie(name) {
   const cookies = document.cookie ? document.cookie.split(";") : [];
@@ -85,12 +88,29 @@ function setUserLocation(lat, lon, label) {
   locationStatus.textContent = label;
 }
 
+function applyNearbyLayout(layout = nearbyLayout) {
+  nearbyLayout = layout === "swipe" ? "swipe" : "vertical";
+  nearbyList?.classList.toggle("results-list-swipe", nearbyLayout === "swipe");
+  nearbyList?.classList.toggle("results-list-vertical", nearbyLayout === "vertical");
+  nearbyLayoutButtons.forEach((button) => {
+    const isActive = button.dataset.layout === nearbyLayout;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+  });
+  try {
+    localStorage.setItem(NEARBY_LAYOUT_KEY, nearbyLayout);
+  } catch (_) {
+    // no-op for storage limitations
+  }
+}
+
 function renderList(items, { append = false } = {}) {
   ensureMapReady();
   if (!append) {
     nearbyList.innerHTML = "";
     clearMarkers();
   }
+  applyNearbyLayout();
   if (!items.length) {
     nearbyList.innerHTML = '<p class="empty-state">No nearby restaurants found.</p>';
     if (loadMoreBtn) loadMoreBtn.style.display = "none";
@@ -219,6 +239,11 @@ async function setManualLocation() {
 
 useCurrentBtn?.addEventListener("click", detectLocation);
 setLocationBtn?.addEventListener("click", setManualLocation);
+nearbyLayoutButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    applyNearbyLayout(button.dataset.layout);
+  });
+});
 if (loadMoreBtn) {
   loadMoreBtn.addEventListener("click", async () => {
     if (!hasMore) return;
@@ -234,3 +259,4 @@ if (loadMoreBtn) {
 }
 
 locationStatus.textContent = "Showing default location. Tap Use My Current Location or Set Location to load nearby results.";
+applyNearbyLayout();

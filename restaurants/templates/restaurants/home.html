@@ -7,17 +7,17 @@
 <section class="hero">
     <div class="hero-copy">
         <div id="homeOnboardingMount"></div>
-        <p class="hero-kicker">Your AI Food Companion</p>
-        <h1>Find the right place to eat in seconds, not after endless scrolling.</h1>
+        <p class="hero-kicker">Food Finder</p>
+        <h1>Find food that matches your craving.</h1>
         <p class="hero-subtext">
-            Discover nearby restaurants that match your budget, cravings, and vibe with smart local search.
+            Search by dish, cuisine, budget, or mood.
         </p>
         <form class="hero-search" action="/search/" method="get">
             <input
                 id="homeQueryInput"
                 name="q"
                 type="text"
-                placeholder="Try: budget under 500, korean, nearby, open now"
+                placeholder="Try: chicken, pizza, korean, open now"
             />
             <button id="homeVoiceBtn" class="icon-btn home-voice-btn" type="button" aria-label="Tell me what you want">
                 <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -29,15 +29,16 @@
             </button>
             <button class="btn primary" type="submit">Search Now</button>
         </form>
-        <p class="helper-text"><a href="/ai-search/">Use AI Search instead</a> for grounded web-based restaurant suggestions.</p>
+        <p class="helper-text"><a href="/ai-search/">Use AI Search</a> for web-grounded suggestions.</p>
         <div class="recommendation-chips" id="recommendationChips">
-            <button class="chip clickable-chip" type="button" data-query="chicken near me">Chicken</button>
-            <button class="chip clickable-chip" type="button" data-query="pizza under 500 near me">Pizza</button>
-            <button class="chip clickable-chip" type="button" data-query="korean open now nearby">Korean</button>
-            <button class="chip clickable-chip" type="button" data-query="quiet date place under 800">Date Night</button>
-            <button class="chip clickable-chip" type="button" data-query="burger budget meal nearby">Burgers</button>
+            <button class="chip clickable-chip" type="button" data-query="chicken">Chicken</button>
+            <button class="chip clickable-chip" type="button" data-query="pizza">Pizza</button>
+            <button class="chip clickable-chip" type="button" data-query="korean">Korean</button>
+            <button class="chip clickable-chip" type="button" data-query="quiet date place">Date Night</button>
+            <button class="chip clickable-chip" type="button" data-query="burger">Burgers</button>
+            <button class="chip clickable-chip" type="button" data-query="under 500">Under 500</button>
         </div>
-        <p id="homeVoiceStatus" class="helper-text">Tap the mic and say your craving naturally.</p>
+        <p id="homeVoiceStatus" class="helper-text">Tap the mic to speak your craving.</p>
         <details class="location-details">
             <summary>Set location manually (optional)</summary>
             <div class="manual-location-grid home-manual-location-grid">
@@ -47,16 +48,18 @@
                 <button id="homeSetLocationBtn" class="btn ghost" type="button">Set Location</button>
             </div>
         </details>
-        <p id="homeLocationStatus" class="helper-text">Showing default picks. Set location to load nearby API results.</p>
+        <p id="homeLocationStatus" class="helper-text">Set a location for nearby picks.</p>
     </div>
     <div class="hero-panel">
-        <div class="mini-card">
-            <p>Sample Voice Query</p>
-            <h3>"Cheap samgyupsal near me open now"</h3>
+        <div class="mini-card visual-card craving-card">
+            <span class="visual-card-icon" aria-hidden="true">C</span>
+            <p>Craving</p>
+            <h3>Chicken, pizza, ramen</h3>
         </div>
-        <div class="mini-card highlight">
-            <p>Interpreted Filters</p>
-            <h3>Budget under 500, Korean, nearby, open now</h3>
+        <div class="mini-card visual-card nearby-card highlight">
+            <span class="visual-card-icon" aria-hidden="true">N</span>
+            <p>Nearby</p>
+            <h3>Open places around you</h3>
         </div>
     </div>
 </section>

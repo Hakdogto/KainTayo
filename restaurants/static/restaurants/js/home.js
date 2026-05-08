@@ -9,7 +9,7 @@ const homeCityInput = document.getElementById("homeCityInput");
 const homeSetLocationBtn = document.getElementById("homeSetLocationBtn");
 const recommendationChips = document.getElementById("recommendationChips");
 const homeOnboardingMount = document.getElementById("homeOnboardingMount");
-const HOME_ONBOARDING_KEY = "homeOnboardingSeenV1";
+const APP_TIPS_DISMISSED_KEY = "kainTayoTipsDismissedV1";
 
 function renderNearbyRestaurants(items) {
   if (!nearbyGrid) return;
@@ -139,28 +139,28 @@ function getCookie(name) {
   return "";
 }
 
-function mountHomeOnboarding(force = false) {
+function dismissHomeOnboarding() {
+  localStorage.setItem(APP_TIPS_DISMISSED_KEY, "1");
+  if (homeOnboardingMount) {
+    homeOnboardingMount.innerHTML = "";
+  }
+}
+
+function mountHomeOnboarding() {
   if (!homeOnboardingMount) return;
-  const seen = localStorage.getItem(HOME_ONBOARDING_KEY) === "1";
-  if (seen && !force) {
-    homeOnboardingMount.innerHTML = `
-      <div class="onboarding-inline-row">
-        <button id="showHomeTipsAgainBtn" class="chip" type="button">Show tips again</button>
-      </div>
-    `;
-    homeOnboardingMount.querySelector("#showHomeTipsAgainBtn")?.addEventListener("click", () => {
-      mountHomeOnboarding(true);
-    });
+  const dismissed = localStorage.getItem(APP_TIPS_DISMISSED_KEY) === "1";
+  if (dismissed) {
+    homeOnboardingMount.innerHTML = "";
     return;
   }
 
   homeOnboardingMount.innerHTML = `
     <aside class="onboarding-card" role="note" aria-label="Home tips">
-      <h3>How to start quickly</h3>
+      <button id="homeOnboardingCloseBtn" class="onboarding-close" type="button" aria-label="Close tips">X</button>
+      <h3>Quick start</h3>
       <ul>
-        <li>Use recommendation chips for instant Smart Search presets.</li>
-        <li>Tap the mic and describe your craving naturally.</li>
-        <li>For broader suggestions, switch to <a href="/ai-search/">AI Search</a>.</li>
+        <li>Tap a craving chip or speak into the mic.</li>
+        <li>Add a location for nearby matches.</li>
       </ul>
       <div class="onboarding-actions">
         <button id="homeOnboardingDismissBtn" class="btn primary" type="button">Got it</button>
@@ -169,13 +169,9 @@ function mountHomeOnboarding(force = false) {
     </aside>
   `;
 
-  homeOnboardingMount.querySelector("#homeOnboardingDismissBtn")?.addEventListener("click", () => {
-    localStorage.setItem(HOME_ONBOARDING_KEY, "1");
-    mountHomeOnboarding(false);
-  });
-  homeOnboardingMount.querySelector("#homeOnboardingLaterBtn")?.addEventListener("click", () => {
-    homeOnboardingMount.innerHTML = "";
-  });
+  homeOnboardingMount.querySelector("#homeOnboardingCloseBtn")?.addEventListener("click", dismissHomeOnboarding);
+  homeOnboardingMount.querySelector("#homeOnboardingDismissBtn")?.addEventListener("click", dismissHomeOnboarding);
+  homeOnboardingMount.querySelector("#homeOnboardingLaterBtn")?.addEventListener("click", dismissHomeOnboarding);
 }
 
 homeSetLocationBtn?.addEventListener("click", setHomeManualLocation);

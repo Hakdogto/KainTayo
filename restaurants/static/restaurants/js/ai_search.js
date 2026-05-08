@@ -1,16 +1,18 @@
+const aiChatForm = document.getElementById("aiChatForm");
 const aiQueryInput = document.getElementById("aiQueryInput");
 const aiSearchBtn = document.getElementById("aiSearchBtn");
 const aiVoiceBtn = document.getElementById("aiVoiceBtn");
 const aiStatus = document.getElementById("aiStatus");
 const aiQuota = document.getElementById("aiQuota");
-const aiSummary = document.getElementById("aiSummary");
-const aiResultsList = document.getElementById("aiResultsList");
+const aiChatLog = document.getElementById("aiChatLog");
+const aiPromptChips = document.querySelectorAll(".ai-prompt-chip");
 const aiOnboardingMount = document.getElementById("aiOnboardingMount");
-const AI_ONBOARDING_KEY = "aiSearchOnboardingSeenV1";
+const APP_TIPS_DISMISSED_KEY = "kainTayoTipsDismissedV1";
 
 let aiBusy = false;
 let lastRunAt = 0;
 const MIN_GAP_MS = 3500;
+const messages = [];
 
 function getCookie(name) {
   const cookies = document.cookie ? document.cookie.split(";") : [];
@@ -23,28 +25,36 @@ function getCookie(name) {
   return "";
 }
 
-function mountAiOnboarding(force = false) {
+function cleanText(value = "") {
+  return String(value)
+    .replace(/```json/gi, "")
+    .replace(/```/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function dismissAiOnboarding() {
+  localStorage.setItem(APP_TIPS_DISMISSED_KEY, "1");
+  if (aiOnboardingMount) {
+    aiOnboardingMount.innerHTML = "";
+  }
+}
+
+function mountAiOnboarding() {
   if (!aiOnboardingMount) return;
-  const seen = localStorage.getItem(AI_ONBOARDING_KEY) === "1";
-  if (seen && !force) {
-    aiOnboardingMount.innerHTML = `
-      <div class="onboarding-inline-row">
-        <button id="showAiTipsAgainBtn" class="chip" type="button">Show tips again</button>
-      </div>
-    `;
-    aiOnboardingMount.querySelector("#showAiTipsAgainBtn")?.addEventListener("click", () => {
-      mountAiOnboarding(true);
-    });
+  const dismissed = localStorage.getItem(APP_TIPS_DISMISSED_KEY) === "1";
+  if (dismissed) {
+    aiOnboardingMount.innerHTML = "";
     return;
   }
 
   aiOnboardingMount.innerHTML = `
     <aside class="onboarding-card" role="note" aria-label="AI search tips">
-      <h3>Tips for better AI results</h3>
+      <button id="aiOnboardingCloseBtn" class="onboarding-close" type="button" aria-label="Close tips">X</button>
+      <h3>AI tips</h3>
       <ul>
-        <li>Include city or area for more grounded suggestions.</li>
-        <li>Add intent words like budget, open late, or family-friendly.</li>
-        <li>Use voice input for faster natural queries.</li>
+        <li>Ask like you are messaging a food-savvy friend.</li>
+        <li>Add an area, budget, cuisine, or vibe for sharper picks.</li>
       </ul>
       <div class="onboarding-actions">
         <button id="aiOnboardingDismissBtn" class="btn primary" type="button">Got it</button>
@@ -53,29 +63,62 @@ function mountAiOnboarding(force = false) {
     </aside>
   `;
 
-  aiOnboardingMount.querySelector("#aiOnboardingDismissBtn")?.addEventListener("click", () => {
-    localStorage.setItem(AI_ONBOARDING_KEY, "1");
-    mountAiOnboarding(false);
-  });
-  aiOnboardingMount.querySelector("#aiOnboardingLaterBtn")?.addEventListener("click", () => {
-    aiOnboardingMount.innerHTML = "";
-  });
+  aiOnboardingMount.querySelector("#aiOnboardingCloseBtn")?.addEventListener("click", dismissAiOnboarding);
+  aiOnboardingMount.querySelector("#aiOnboardingDismissBtn")?.addEventListener("click", dismissAiOnboarding);
+  aiOnboardingMount.querySelector("#aiOnboardingLaterBtn")?.addEventListener("click", dismissAiOnboarding);
 }
 
-function renderAiResults(items) {
-  aiResultsList.innerHTML = "";
-  if (!items.length) {
-    aiResultsList.innerHTML = '<p class="empty-state">No food-related results found yet. Try adding a city or cuisine in your query.</p>';
-    return;
-  }
+function scrollChatToBottom() {
+  if (!aiChatLog) return;
+  aiChatLog.scrollTop = aiChatLog.scrollHeight;
+}
 
-  const cleanText = (value = "") => String(value)
-    .replace(/```json/gi, "")
-    .replace(/```/g, "")
-    .replace(/\s{2,}/g, " ")
-    .trim();
+function createMessageShell(role, { loading = false } = {}) {
+  const message = document.createElement("article");
+  message.className = `chat-message ${role === "user" ? "chat-message-user" : "chat-message-assistant"}`;
 
-  const cleanedRows = items
+  const avatar = document.createElement("span");
+  avatar.className = "chat-avatar";
+  avatar.textContent = role === "user" ? "You" : "AI";
+
+  const bubble = document.createElement("div");
+  bubble.className = `chat-bubble${loading ? " chat-bubble-loading" : ""}`;
+
+  message.appendChild(avatar);
+  message.appendChild(bubble);
+  aiChatLog.appendChild(message);
+  scrollChatToBottom();
+  return { message, bubble };
+}
+
+function appendUserMessage(text) {
+  messages.push({ role: "user", text });
+  const { bubble } = createMessageShell("user");
+  bubble.textContent = text;
+}
+
+function appendAssistantWelcome() {
+  const { bubble } = createMessageShell("assistant");
+  const title = document.createElement("strong");
+  title.textContent = "What are you craving?";
+  const copy = document.createElement("p");
+  copy.textContent = "Tell me the dish, budget, location, or mood, and I will look for grounded suggestions.";
+  bubble.appendChild(title);
+  bubble.appendChild(copy);
+}
+
+function appendLoadingBubble() {
+  const { message, bubble } = createMessageShell("assistant", { loading: true });
+  bubble.innerHTML = `
+    <span class="typing-dot"></span>
+    <span class="typing-dot"></span>
+    <span class="typing-dot"></span>
+  `;
+  return message;
+}
+
+function cleanedResultRows(items) {
+  return (items || [])
     .map((item) => ({
       name: cleanText(item.name || ""),
       category: cleanText(item.category || "restaurant"),
@@ -85,50 +128,132 @@ function renderAiResults(items) {
       sourceUrl: cleanText(item.source_url || ""),
     }))
     .filter((row) => row.name && row.name.toUpperCase() !== "RESTAURANT" && !row.name.includes('"summary"'));
-
-  if (!cleanedRows.length) {
-    aiResultsList.innerHTML = '<p class="empty-state">No clean restaurant suggestions were returned.</p>';
-    return;
-  }
-
-  const card = document.createElement("article");
-  card.className = "result-item";
-  const listMarkup = cleanedRows.slice(0, 8).map((row) => `
-    <li>
-      <strong>${row.name}</strong>
-      <div>${row.category.toUpperCase()}${row.area ? ` | ${row.area}` : ""}${row.priceHint ? ` | ${row.priceHint}` : ""}</div>
-      <div>${row.why}</div>
-      ${row.sourceUrl ? `<a class="link-btn" href="${row.sourceUrl}" target="_blank" rel="noopener noreferrer">Source</a>` : ""}
-    </li>
-  `).join("");
-  card.innerHTML = `
-    <h3>Recommended Places</h3>
-    <ol class="ai-results-list">${listMarkup}</ol>
-  `;
-  aiResultsList.appendChild(card);
 }
 
-async function runAiSearch() {
-  const query = (aiQueryInput?.value || "").trim();
+function buildRecommendationCards(rows) {
+  if (!rows.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = "No clean restaurant suggestions came back. Try adding a clearer area or cuisine.";
+    return empty;
+  }
+
+  const cards = document.createElement("div");
+  cards.className = "chat-result-cards";
+  rows.slice(0, 8).forEach((row) => {
+    const card = document.createElement("article");
+    card.className = "chat-result-card";
+
+    const meta = [row.category.toUpperCase(), row.area, row.priceHint].filter(Boolean).join(" | ");
+    const title = document.createElement("h3");
+    title.textContent = row.name;
+    card.appendChild(title);
+
+    if (meta) {
+      const metaText = document.createElement("p");
+      metaText.className = "chat-result-meta";
+      metaText.textContent = meta;
+      card.appendChild(metaText);
+    }
+
+    if (row.why) {
+      const why = document.createElement("p");
+      why.textContent = row.why;
+      card.appendChild(why);
+    }
+
+    if (row.sourceUrl) {
+      const source = document.createElement("a");
+      source.className = "link-btn";
+      source.href = row.sourceUrl;
+      source.target = "_blank";
+      source.rel = "noopener noreferrer";
+      source.textContent = "Source";
+      card.appendChild(source);
+    }
+
+    cards.appendChild(card);
+  });
+  return cards;
+}
+
+function renderAssistantResponse(payload, loadingMessage) {
+  const target = loadingMessage || createMessageShell("assistant").message;
+  const bubble = target.querySelector(".chat-bubble");
+  if (!bubble) return;
+
+  bubble.classList.remove("chat-bubble-loading");
+  bubble.innerHTML = "";
+
+  const summary = document.createElement("p");
+  summary.className = "chat-summary";
+  summary.textContent = cleanText(payload.summary || "AI suggestions ready.");
+  bubble.appendChild(summary);
+  bubble.appendChild(buildRecommendationCards(cleanedResultRows(payload.results)));
+
+  messages.push({
+    role: "assistant",
+    text: summary.textContent,
+    results: payload.results || [],
+  });
+  scrollChatToBottom();
+}
+
+function renderAssistantError(message, loadingMessage = null) {
+  const target = loadingMessage || createMessageShell("assistant").message;
+  const bubble = target.querySelector(".chat-bubble");
+  if (!bubble) return;
+  bubble.classList.remove("chat-bubble-loading");
+  bubble.innerHTML = "";
+  const copy = document.createElement("p");
+  copy.className = "chat-error-text";
+  copy.textContent = message;
+  bubble.appendChild(copy);
+  messages.push({ role: "assistant", text: message, error: true });
+  scrollChatToBottom();
+}
+
+function statusForPayload(payload) {
+  if (payload.grounded_ok) {
+    return payload.empty_results ? "No matching food places found." : "AI search complete.";
+  }
+  if (payload.error_code === "network_error") {
+    return "AI provider network issue. Please retry in a few seconds.";
+  }
+  if (payload.error_code === "invalid_request") {
+    return "AI provider rejected this request format. Fallback mode was used.";
+  }
+  if (payload.error_code === "parse_error") {
+    return "AI response format issue detected. Please retry.";
+  }
+  return "Grounded AI is temporarily unavailable.";
+}
+
+async function runAiSearch(queryOverride = "") {
+  const query = cleanText(queryOverride || aiQueryInput?.value || "");
   if (query.length < 4) {
-    aiStatus.textContent = "Enter at least 4 characters for AI search.";
+    renderAssistantError("Enter at least 4 characters for AI search.");
+    aiStatus.textContent = "Enter at least 4 characters.";
     return;
   }
 
   const now = Date.now();
   if (now - lastRunAt < MIN_GAP_MS) {
-    aiStatus.textContent = "Please wait a few seconds before another AI request.";
+    renderAssistantError("Please wait a few seconds before another AI request.");
+    aiStatus.textContent = "Please wait a few seconds.";
     return;
   }
   if (aiBusy) return;
 
+  appendUserMessage(query);
+  aiQueryInput.value = "";
   aiBusy = true;
   lastRunAt = now;
   aiSearchBtn.disabled = true;
-  aiSearchBtn.textContent = "Thinking...";
-  aiStatus.textContent = "Running grounded AI search...";
-  aiSummary.innerHTML = "";
-  aiQuota.textContent = "";
+  aiVoiceBtn.disabled = true;
+  aiSearchBtn.textContent = "Sending...";
+  aiStatus.textContent = "Looking for grounded suggestions...";
+  const loadingMessage = appendLoadingBubble();
 
   try {
     const response = await fetch("/api/ai-search/", {
@@ -143,46 +268,37 @@ async function runAiSearch() {
     if (!response.ok) {
       throw new Error(payload.error || "AI search failed.");
     }
-    const summaryCard = document.createElement("article");
-    summaryCard.className = "result-item";
-    summaryCard.innerHTML = `
-      <h3>AI Summary</h3>
-      <p>${String(payload.summary || "AI suggestions ready.").replace(/```json/gi, "").replace(/```/g, "").trim()}</p>
-    `;
-    aiSummary.appendChild(summaryCard);
-    renderAiResults(payload.results || []);
+
+    renderAssistantResponse(payload, loadingMessage);
     aiQuota.textContent = `Remaining AI searches today: ${payload.remaining ?? "-"}`;
-    if (!payload.grounded_ok) {
-      if (payload.error_code === "network_error") {
-        aiStatus.textContent = "AI provider network issue. Please retry in a few seconds.";
-      } else if (payload.error_code === "invalid_request") {
-        aiStatus.textContent = "AI provider rejected this request format. Fallback mode was used.";
-      } else if (payload.error_code === "parse_error") {
-        aiStatus.textContent = "AI response format issue detected. Please retry.";
-      } else {
-        aiStatus.textContent = "Grounded AI is temporarily unavailable.";
-      }
-    } else if (payload.empty_results) {
-      aiStatus.textContent = "No matching food places found from grounded web results.";
-    } else {
-      aiStatus.textContent = "AI search complete.";
-    }
+    aiStatus.textContent = statusForPayload(payload);
   } catch (error) {
-    aiStatus.textContent = error.message || "AI search is temporarily unavailable.";
+    const message = error.message || "AI search is temporarily unavailable.";
+    renderAssistantError(message, loadingMessage);
+    aiStatus.textContent = message;
   } finally {
     aiBusy = false;
     aiSearchBtn.disabled = false;
-    aiSearchBtn.textContent = "Run AI Search";
+    aiVoiceBtn.disabled = false;
+    aiSearchBtn.textContent = "Send";
+    aiQueryInput.focus();
   }
 }
 
-aiSearchBtn?.addEventListener("click", runAiSearch);
 mountAiOnboarding();
-aiQueryInput?.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") {
-    event.preventDefault();
-    runAiSearch();
-  }
+appendAssistantWelcome();
+
+aiChatForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  runAiSearch();
+});
+
+aiPromptChips.forEach((chip) => {
+  chip.addEventListener("click", () => {
+    const query = chip.dataset.query || "";
+    aiQueryInput.value = query;
+    aiQueryInput.focus();
+  });
 });
 
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -200,7 +316,7 @@ if (SpeechRecognition && aiVoiceBtn) {
   });
 
   recognition.onresult = (event) => {
-    const transcript = (event.results?.[0]?.[0]?.transcript || "").trim();
+    const transcript = cleanText(event.results?.[0]?.[0]?.transcript || "");
     if (!transcript) return;
     aiQueryInput.value = transcript;
     aiStatus.textContent = `Heard: "${transcript}"`;
@@ -216,4 +332,5 @@ if (SpeechRecognition && aiVoiceBtn) {
   };
 } else if (aiVoiceBtn) {
   aiVoiceBtn.disabled = true;
+  aiStatus.textContent = "Voice input is not supported in this browser.";
 }

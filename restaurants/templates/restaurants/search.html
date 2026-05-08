@@ -26,10 +26,11 @@
             <button id="searchBtn" class="btn primary" type="button">Find Food</button>
         </div>
         <div class="recommendation-chips">
-            <button class="chip clickable-chip search-suggestion-chip" type="button" data-query="chicken near me">Chicken</button>
-            <button class="chip clickable-chip search-suggestion-chip" type="button" data-query="pizza under 500 nearby">Pizza</button>
-            <button class="chip clickable-chip search-suggestion-chip" type="button" data-query="korean nearby open now">Korean</button>
-            <button class="chip clickable-chip search-suggestion-chip" type="button" data-query="quiet date place under 500">Quiet Date</button>
+            <button class="chip clickable-chip search-suggestion-chip" type="button" data-query="chicken">Chicken</button>
+            <button class="chip clickable-chip search-suggestion-chip" type="button" data-query="pizza">Pizza</button>
+            <button class="chip clickable-chip search-suggestion-chip" type="button" data-query="korean">Korean</button>
+            <button class="chip clickable-chip search-suggestion-chip" type="button" data-query="quiet date place">Quiet Date</button>
+            <button class="chip clickable-chip search-suggestion-chip" type="button" data-query="under 500">Under 500</button>
         </div>
 
         <div class="location-row">
@@ -52,7 +53,13 @@
         <div id="parsedFilters" class="parsed-filters"></div>
 
         <section>
-            <h2>Matched Restaurants</h2>
+            <div class="results-head">
+                <h2>Matched Restaurants</h2>
+                <div class="layout-toggle" role="group" aria-label="Results layout">
+                    <button id="searchVerticalLayoutBtn" class="layout-toggle-btn active" type="button" data-layout="vertical" aria-pressed="true">Vertical</button>
+                    <button id="searchSwipeLayoutBtn" class="layout-toggle-btn" type="button" data-layout="swipe" aria-pressed="false">Swipe</button>
+                </div>
+            </div>
             <div id="resultsList" class="results-list"></div>
         </section>
     </div>
