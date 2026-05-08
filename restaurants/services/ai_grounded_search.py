@@ -1,13 +1,18 @@
 import hashlib
 import json
 import re
+import urllib.parse
 import urllib.error
 import urllib.request
 
 from django.conf import settings
 from django.core.cache import cache
 
-AI_GROUNDED_CACHE_VERSION = "v2"
+from .external_places import resolve_location_text, search_google_places
+from .intent_parser import parse_natural_query
+
+AI_GROUNDED_CACHE_VERSION = "v3"
+METRO_MANILA_CENTER = (14.5995, 120.9842)
 
 
 def _build_prompt(query: str, location_hint: str = "") -> str:
@@ -73,6 +78,17 @@ def _fallback_payload(query: str) -> dict:
         "query": query,
         "grounded_ok": False,
         "error_code": "grounding_unavailable",
+    }
+
+
+def _final_payload(query: str, parsed: dict, normalized: list[dict], grounded_ok: bool = True) -> dict:
+    return {
+        "summary": str(parsed.get("summary", "")).strip()
+        or "Here are food-related places based on grounded web results.",
+        "results": normalized,
+        "query": query,
+        "grounded_ok": grounded_ok,
+        "error_code": "",
     }
 
 
@@ -413,9 +429,148 @@ def _normalize_results(parsed: dict) -> list[dict]:
     return normalized
 
 
+def _extract_location_hint_from_query(query: str) -> str:
+    lowered = str(query or "").lower()
+    alias_map = {
+        "bgc": "Bonifacio Global City, Taguig, Metro Manila, Philippines",
+        "bonifacio global city": "Bonifacio Global City, Taguig, Metro Manila, Philippines",
+        "santa rosa laguna": "Santa Rosa, Laguna, Philippines",
+        "sta rosa laguna": "Santa Rosa, Laguna, Philippines",
+        "makati": "Makati, Metro Manila, Philippines",
+        "quezon city": "Quezon City, Metro Manila, Philippines",
+        "qc": "Quezon City, Metro Manila, Philippines",
+        "taguig": "Taguig, Metro Manila, Philippines",
+        "pasig": "Pasig, Metro Manila, Philippines",
+        "alabang": "Alabang, Muntinlupa, Metro Manila, Philippines",
+        "nuvali": "Nuvali, Santa Rosa, Laguna, Philippines",
+    }
+    for token, label in alias_map.items():
+        if re.search(rf"\b{re.escape(token)}\b", lowered):
+            return label
+
+    match = re.search(r"\b(?:in|near|around)\s+([a-z][a-z\s.-]{2,60})", lowered)
+    if not match:
+        return ""
+    location = match.group(1)
+    location = re.split(
+        r"\b(?:under|below|open|quiet|best|cheap|budget|restaurant|cafe|coffee|food|place|spot|spots)\b",
+        location,
+        maxsplit=1,
+    )[0].strip(" ,.-")
+    if len(location) < 3:
+        return ""
+    return f"{location}, Philippines"
+
+
+def _resolve_fallback_location(query: str, location_hint: str = "") -> tuple[float, float, str]:
+    label = location_hint.strip() or _extract_location_hint_from_query(query)
+    if label:
+        resolved = resolve_location_text(country="Philippines", region="", city=label)
+        if resolved and resolved.get("latitude") is not None and resolved.get("longitude") is not None:
+            return float(resolved["latitude"]), float(resolved["longitude"]), resolved.get("label") or label
+    return METRO_MANILA_CENTER[0], METRO_MANILA_CENTER[1], label or "Metro Manila"
+
+
+def _price_hint_from_place(place: dict) -> str:
+    cost = place.get("average_cost_for_two")
+    if isinstance(cost, (int, float)) and cost > 0:
+        return f"Around PHP {int(cost)} for two"
+    price_level = str(place.get("price_level", "")).replace("PRICE_LEVEL_", "").replace("_", " ").title()
+    return price_level
+
+
+def _group_for_place(query: str, parsed, place: dict) -> str:
+    lowered = str(query or "").lower()
+    category = str(place.get("cuisine") or "").lower()
+    if any(token in lowered for token in ["quiet", "study", "work", "peaceful"]):
+        if "lounge" in category or "bar" in category:
+            return "Lounges & Hotel Cafes"
+        if "coffee" in category or "cafe" in category:
+            return "Quiet Work Cafes"
+        return "Calm Casual Restaurants"
+    if any(token in lowered for token in ["chicken", "wings", "fried"]):
+        if "wing" in category:
+            return "Wings & Casual Hangouts"
+        return "Fried & Boneless Chicken"
+    if parsed.budget:
+        return "Budget-Friendly Picks"
+    return "Top Picks"
+
+
+def _summary_for_places(query: str, location_label: str, parsed, count: int) -> str:
+    lowered = str(query or "").lower()
+    area = location_label or "your selected area"
+    if any(token in lowered for token in ["quiet", "study", "work", "peaceful"]):
+        budget_text = f" within about PHP {parsed.budget}" if parsed.budget else ""
+        return (
+            f"Quiet food spots around {area}{budget_text} are doable if you focus on cafes, "
+            "lounges, and calmer restaurants with strong ratings."
+        )
+    if "chicken" in lowered:
+        return (
+            f"Here are {count} chicken-focused places around {area}, balancing rating, "
+            "local fit, and practical visit details."
+        )
+    return f"Here are {count} food places around {area} that best match your request."
+
+
+def _places_payload(query: str, location_hint: str = "") -> dict | None:
+    parsed = parse_natural_query(query)
+    lat, lon, location_label = _resolve_fallback_location(query, location_hint=location_hint)
+    places = search_google_places(query, lat, lon, parsed, limit=8)
+    rows = []
+    for place in places[:6]:
+        name = str(place.get("name", "")).strip()
+        if not name or name.lower() == "unknown":
+            continue
+        rating = place.get("rating")
+        open_now = place.get("is_open_now")
+        status = "Open now" if open_now else "May be closed"
+        category = str(place.get("cuisine") or "restaurant").strip() or "restaurant"
+        address = str(place.get("address") or place.get("description") or "").strip()
+        area = address.split(",")[-3].strip() if address.count(",") >= 2 else location_label
+        rows.append(
+            {
+                "name": name[:120],
+                "group": _group_for_place(query, parsed, place),
+                "category": category,
+                "why": (
+                    f"Matches your request for {parsed.mood or category} with a useful "
+                    "location and rating signal."
+                ),
+                "vibe": parsed.mood or ("Quiet-friendly pick" if "quiet" in query.lower() else "Good local match"),
+                "highlights": (
+                    "Good fit for the area, budget, and current place data. Check the source "
+                    "for latest menu, hours, and crowd level."
+                ),
+                "area": area,
+                "address": address,
+                "rating_hint": f"{rating}/5" if rating else "",
+                "review_hint": "",
+                "hours_hint": status,
+                "price_hint": _price_hint_from_place(place),
+                "source_url": (
+                    f"https://www.google.com/maps/search/?api=1&query={urllib.parse.quote(name + ' ' + address)}"
+                    if address
+                    else ""
+                ),
+                "confidence": 0.72,
+            }
+        )
+
+    if not rows:
+        return None
+    parsed_payload = {
+        "summary": _summary_for_places(query, location_label, parsed, len(rows)),
+        "results": rows,
+    }
+    return _final_payload(query, parsed_payload, _normalize_results(parsed_payload), grounded_ok=True)
+
+
 def run_grounded_food_search(query: str, location_hint: str = "") -> dict:
     if not settings.GEMINI_API_KEY:
-        return _fallback_payload(query)
+        places_payload = _places_payload(query, location_hint=location_hint)
+        return places_payload or _fallback_payload(query)
 
     cache_fingerprint = hashlib.sha256(
         f"{query.strip().lower()}|{location_hint.strip().lower()}".encode("utf-8")
@@ -454,12 +609,20 @@ def run_grounded_food_search(query: str, location_hint: str = "") -> dict:
             continue
 
     if not isinstance(body, dict):
+        places_payload = _places_payload(query, location_hint=location_hint)
+        if places_payload:
+            cache.set(cache_key, places_payload, timeout=60 * 10)
+            return places_payload
         payload = _fallback_payload(query)
         payload["error_code"] = last_error_code
         return payload
 
     text = _extract_text_from_body(body)
     if not text:
+        places_payload = _places_payload(query, location_hint=location_hint)
+        if places_payload:
+            cache.set(cache_key, places_payload, timeout=60 * 10)
+            return places_payload
         return _fallback_payload(query)
 
     parsed = _parse_ai_text(text)
@@ -474,6 +637,10 @@ def run_grounded_food_search(query: str, location_hint: str = "") -> dict:
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, ValueError):
             parsed = None
     if not isinstance(parsed, dict):
+        places_payload = _places_payload(query, location_hint=location_hint)
+        if places_payload:
+            cache.set(cache_key, places_payload, timeout=60 * 10)
+            return places_payload
         payload = _fallback_payload(query)
         payload["error_code"] = "parse_error"
         return payload
@@ -495,17 +662,14 @@ def run_grounded_food_search(query: str, location_hint: str = "") -> dict:
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, ValueError):
             pass
     if not normalized:
+        places_payload = _places_payload(query, location_hint=location_hint)
+        if places_payload:
+            cache.set(cache_key, places_payload, timeout=60 * 10)
+            return places_payload
         payload = _fallback_payload(query)
         payload["error_code"] = "parse_error"
         return payload
 
-    final_payload = {
-        "summary": str(parsed.get("summary", "")).strip()
-        or "Here are food-related places based on grounded web results.",
-        "results": normalized,
-        "query": query,
-        "grounded_ok": True,
-        "error_code": "",
-    }
+    final_payload = _final_payload(query, parsed, normalized, grounded_ok=True)
     cache.set(cache_key, final_payload, timeout=60 * 10)
     return final_payload

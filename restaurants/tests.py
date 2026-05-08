@@ -287,6 +287,88 @@ class AiGroundedSearchParsingTests(TestCase):
         self.assertEqual(payload["results"][0]["name"], "24 Chicken Balibago")
         self.assertEqual(mock_call.call_count, 2)
 
+    @override_settings(GEMINI_API_KEY="", GOOGLE_MAPS_API_KEY="demo-google-key")
+    @patch("restaurants.services.ai_grounded_search.search_google_places")
+    @patch("restaurants.services.ai_grounded_search.resolve_location_text")
+    def test_grounded_search_uses_places_fallback_without_gemini(self, mock_resolve, mock_places):
+        mock_resolve.return_value = {
+            "latitude": 14.5503,
+            "longitude": 121.0482,
+            "label": "Bonifacio Global City, Taguig",
+        }
+        mock_places.return_value = [
+            {
+                "name": "Frank & Dean Coffee",
+                "cuisine": "coffee shop",
+                "average_cost_for_two": 400,
+                "rating": 4.2,
+                "is_open_now": False,
+                "address": "High Street South, BGC, Taguig, Metro Manila",
+                "description": "High Street South, BGC, Taguig, Metro Manila",
+            }
+        ]
+
+        payload = run_grounded_food_search("quiet place in bgc under 1000")
+
+        self.assertTrue(payload["grounded_ok"])
+        self.assertEqual(payload["results"][0]["name"], "Frank & Dean Coffee")
+        self.assertIn("Quiet", payload["results"][0]["group"])
+        self.assertIn("PHP", payload["results"][0]["price_hint"])
+
+    @override_settings(GEMINI_API_KEY="demo-key", GEMINI_MODEL="demo-model", GOOGLE_MAPS_API_KEY="demo-google-key")
+    @patch("restaurants.services.ai_grounded_search.search_google_places")
+    @patch("restaurants.services.ai_grounded_search.resolve_location_text")
+    @patch("restaurants.services.ai_grounded_search._call_gemini")
+    def test_grounded_search_falls_back_to_places_after_invalid_ai_rows(
+        self, mock_call, mock_resolve, mock_places
+    ):
+        bad_summary = "Discover the top quiet places in BGC under 1000."
+        mock_call.side_effect = [
+            {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {
+                                    "text": (
+                                        '{"summary": "'
+                                        + bad_summary
+                                        + '", "results": [{"name": "'
+                                        + bad_summary
+                                        + '", "category": "restaurant", "highlights": "'
+                                        + bad_summary
+                                        + '"}]}'
+                                    )
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+            {"candidates": [{"content": {"parts": [{"text": "{\"summary\":\"bad\",\"results\":[]}"}]}}]},
+        ]
+        mock_resolve.return_value = {
+            "latitude": 14.5503,
+            "longitude": 121.0482,
+            "label": "Bonifacio Global City, Taguig",
+        }
+        mock_places.return_value = [
+            {
+                "name": "Sunkissed Cafe - BGC",
+                "cuisine": "coffee shop",
+                "average_cost_for_two": 500,
+                "rating": 4.0,
+                "is_open_now": False,
+                "address": "Uptown BGC, Taguig, Metro Manila",
+                "description": "Uptown BGC, Taguig, Metro Manila",
+            }
+        ]
+
+        payload = run_grounded_food_search("quiet place in bgc under 1000 fallback")
+
+        self.assertEqual(payload["results"][0]["name"], "Sunkissed Cafe - BGC")
+        self.assertTrue(mock_places.called)
+
 
 @override_settings(SECURE_SSL_REDIRECT=False)
 class PageRoutesTests(TestCase):

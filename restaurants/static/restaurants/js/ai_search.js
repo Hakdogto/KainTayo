@@ -236,7 +236,7 @@ function buildRecommendationCards(rows) {
   if (!rows.length) {
     const empty = document.createElement("p");
     empty.className = "empty-state";
-    empty.textContent = "No clean restaurant suggestions came back. Try adding a clearer area or cuisine.";
+    empty.textContent = "I could not find reliable place cards for that yet. Try adding a city, landmark, cuisine, or budget.";
     return empty;
   }
 
