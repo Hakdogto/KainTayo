@@ -1,120 +1,186 @@
 # System Overview
 
-## System identity
+## System Identity
 
 - **Name:** Kain Tayo
-- **Type:** AI-assisted restaurant discovery web app
-- **Core experience:** Smart Search + AI Search with mobile-first UX
+- **Type:** AI-assisted restaurant discovery web application
+- **Primary goal:** Help users quickly find food places by query, location, budget, cuisine, mood, and practical visit details.
+- **Main experiences:** Home discovery, Smart Search, Nearby browsing, AI Food Chat, Favorites, Recent Searches, and detail pages.
 
-## Finalized architecture (high level)
+## High-Level Architecture
 
-Kain Tayo has two discovery paths:
+Kain Tayo is a Django application with a server-rendered page layer and REST-style JSON endpoints used by page-specific JavaScript.
 
-1. **Smart Search** (`/search/`)
-   - natural-language intent parsing
-   - local DB + optional external place merge
-   - semantic ranking (pgvector for local restaurants)
-   - map and list rendering
-2. **AI Search** (`/ai-search/`)
-   - Gemini-based grounded suggestions
-   - reliability fallback chain for model output variability
-   - single-card recommendation UI for cleaner output
+At a high level:
 
-Supporting pages:
+1. Django templates render the first page shell.
+2. JavaScript handles browser location, forms, voice input, layout toggles, maps, and API calls.
+3. Django REST endpoints process search, nearby, favorites, history, AI search, and location resolution.
+4. Local restaurant data comes from the database.
+5. External live restaurant data comes from Google Places.
+6. AI interpretation and AI Food Chat use Gemini.
+7. Optional semantic ranking uses Gemini embeddings stored through `pgvector`.
 
-- Home (`/`)
-- Nearby (`/nearby/`)
-- Favorites (`/favorites/`)
-- Recent (`/recent/`)
-- Detail pages (`/restaurant/<id>/`, `/place/<place_id>/`)
+## Main Subsystems
 
-## Data model and storage
+### Django Project
 
-- **Primary DB:** PostgreSQL (or SQLite locally when `DATABASE_URL` is missing)
-- **ORM:** Django ORM
-- **Vector extension:** `pgvector` in PostgreSQL
+- Root project: `ai_restaurant_finder`
+- Main app: `restaurants`
+- Root routes include all app routes from `restaurants.urls`.
+- Settings configure Django REST Framework throttling, database, static files, security headers, Google/Gemini keys, and vector search flags.
 
-Key stored entities:
+### Database
 
-- Restaurants (with vector embeddings)
-- Local favorites
-- External place favorites
-- Search history
+The system stores:
 
-Vector details:
+- `Restaurant`
+  - Local restaurant inventory with cuisine, mood tags, cost, rating, coordinates, address, and optional embedding.
+- `SearchHistory`
+  - Recent searches for logged-in users or anonymous sessions.
+- `FavoriteRestaurant`
+  - Favorites for local database restaurants.
+- `FavoriteExternalPlace`
+  - Favorites for Google Places results.
+- `UserPreference`
+  - Future preference profile support.
 
-- extension: `vector`
-- embedding field: `Restaurant.embedding` (768 dims)
-- similarity metric: cosine distance
+### External Integrations
 
-## API and service layout
+- **Google Places**
+  - Text search for external restaurants.
+  - Place detail lookup.
+  - Photo proxy.
+  - Manual location resolution.
+  - AI fallback when Gemini cannot produce usable cards.
 
-Core APIs:
+- **Gemini**
+  - AI intent parsing fallback.
+  - Text embeddings for semantic search.
+  - Grounded AI Food Chat.
 
-- `POST /api/search/`
-- `GET /api/nearby/`
-- `POST /api/resolve-location/`
-- `POST /api/ai-search/`
-- `POST /api/chat-assistant/`
-- favorites/history CRUD APIs
-- `GET /manifest.webmanifest`
-- `GET /service-worker.js`
+- **Map UI**
+  - Leaflet-based frontend map.
+  - Mapbox token support when configured.
+  - OpenStreetMap fallback.
 
-Important service modules:
+## Page Flow Summary
 
-- `intent_parser.py` / `ai_intent.py` for query extraction
-- `vector_search.py` for semantic similarity ranking
-- `external_places.py` for external place fetches/photo proxy
-- `ai_grounded_search.py` for resilient AI search parsing
+### Home
 
-## Smart Search flow
+The Home page automatically requests browser location on load. If allowed, it loads nearby restaurant data. If denied or unavailable, it falls back to Metro Manila/default recommendations. Manual location remains available and, when used, is saved into session storage so Smart Search can inherit it.
 
-1. User submits query (text/voice/chip).
-2. Query is parsed into filters (budget/cuisine/mood/open/rating/near me).
-3. Local candidates are filtered and semantically scored.
-4. External place candidates are fetched and merged.
-5. Results are deduped and ranked by relevance + distance + rating.
-6. Results and state are persisted in session storage for back-navigation restore.
+### Smart Search
 
-## AI Search flow
+Smart Search accepts a text query, location, voice input, chips, and manual location override. It sends the query to `/api/search/`, where the backend parses intent, filters local restaurants, fetches Google Places results, ranks everything, stores history, and returns results. The frontend supports map markers, favorites, vertical layout, and horizontal swipe layout.
 
-1. User submits query manually (click-triggered).
-2. Backend calls Gemini with staged request strategy.
-3. Response parsing fallback chain:
-   - strict JSON
-   - JSON-like extraction
-   - plaintext extraction
-   - optional plaintext retry call
-4. Normalized suggestions are returned and rendered in one clean card/list area.
-5. Query responses are cached to reduce repeat latency and API cost.
+### Nearby
 
-## Performance and UX characteristics
+Nearby automatically detects location on page load, fetches `/api/nearby/`, and shows paginated nearby results. Users can switch between vertical and swipe layout. Manual location can override the detected location.
 
-- No unnecessary auto-triggered search calls on initial load.
-- Cached external/AI lookups reduce repeated request time.
-- Search state restoration includes query, filters, results, location, and form fields.
-- Skeleton loading and smart empty-state suggestions improve perceived speed.
-- Sticky mobile actions improve one-handed usability.
-- Onboarding tips available on Home, Smart Search, and AI Search.
+### AI Food Chat
 
-## Accessibility and PWA
+AI Food Chat is separate from Smart Search. It sends each user message to `/api/ai-search/`. The backend attempts Gemini grounded search, validates and repairs malformed model output, rejects fake summary cards, and falls back to Google Places if needed. The frontend renders a chat transcript with compact grouped recommendation cards.
 
-- Skip-to-content and aria-live updates for search status.
-- Keyboard and focus-friendly controls.
-- PWA manifest + service worker baseline.
-- Service worker strategy:
-  - network-first for HTML
-  - cache-first for static assets
-  - API routes bypass cache
+### Favorites
 
-## Security and reliability
+Favorites are session-aware and support both local restaurants and external Google Places. Anonymous users are tracked through a Django session key. Adding the same item is idempotent.
 
-- DRF throttle controls (anon/user + scoped AI search throttle).
-- Daily AI quota gate to protect usage.
-- Input validation and coordinate bounds checks on APIs.
-- Graceful degradation for map/provider failures.
+### Recent Searches
 
-## Development workflow note
+Recent Searches come from `SearchHistory`. They store raw query, interpreted filters, coordinates, and timestamp. Users can delete entries.
 
-- MCP (`user-lean-ctx`) is used during development only.
-- Production runtime does not depend on MCP services.
+### Detail Pages
+
+Local restaurants and Google Places share the same detail template. A detail helper builds a facts-first payload with overview, rating, price, open status, address, contact, website, maps, and action links.
+
+## Smart Search Technical Flow
+
+1. Frontend submits query and coordinates.
+2. Backend validates query length and coordinate bounds.
+3. `parse_query()` extracts intent.
+4. Local restaurants are filtered by cuisine, budget, mood, open-now, and rating.
+5. If enabled, semantic scores are calculated with stored embeddings.
+6. Google Places text search returns external candidates.
+7. Distances are calculated with Haversine.
+8. Results are deduplicated by name and coordinates.
+9. `_search_relevance_score()` ranks results.
+10. Search history is saved.
+11. JSON response returns filters, assistant chips, and results.
+
+## AI Food Chat Technical Flow
+
+1. User sends message from `/ai-search/`.
+2. `/api/ai-search/` validates the query.
+3. Daily AI quota and DRF throttle are checked.
+4. Gemini is called with strict JSON and grounded search instructions.
+5. The parser tries strict JSON, JSON-like extraction, and plaintext extraction.
+6. Rows are normalized and validated.
+7. If rows are invalid, a repair prompt retries Gemini once.
+8. If Gemini still fails, Google Places fallback searches using parsed query and resolved location.
+9. Final rows are cached and returned.
+10. The frontend renders a summary and grouped cards.
+
+## Browser State and Storage
+
+The frontend uses browser storage for UX continuity:
+
+- `localStorage.kainTayoTipsDismissedV1`
+  - Shared tips dismissal across Home, Smart Search, and AI Search.
+- `sessionStorage.homeManualLocationForSearchV1`
+  - Home-to-Smart-Search manual location handoff.
+- `sessionStorage.smartSearchStateV1`
+  - Smart Search query, location, results, and filters.
+- `localStorage.smartSearchResultsLayoutV1`
+  - Smart Search vertical/swipe layout.
+- `localStorage.nearbyResultsLayoutV1`
+  - Nearby vertical/swipe layout.
+- `localStorage.kainTayoPwaInstallDismissedV1`
+  - PWA install bar dismissal.
+
+## PWA and Cache Freshness
+
+The service worker is served by Django at `/service-worker.js`.
+
+Current strategy:
+
+- Network-first for HTML pages.
+- Cache-first fallback for cacheable same-origin static/runtime assets.
+- Ignore non-HTTP schemes, cross-origin requests, API routes, and the service worker script.
+- Serve service worker with no-cache headers.
+- Bump cache names when cache behavior changes.
+
+This prevents stale deployed templates from requiring Ctrl+F5 in normal use.
+
+## Deployment
+
+Render deployment is configured through:
+
+- `render.yaml`
+- `build.sh`
+
+Build installs dependencies and collects static files. Start command runs migrations and Gunicorn.
+
+Production configuration uses:
+
+- `DEBUG=False`
+- secure cookies
+- HSTS when not in debug mode
+- WhiteNoise compressed manifest static storage
+- PostgreSQL through `DATABASE_URL`
+
+## Reliability and Guardrails
+
+- Query length validation.
+- Coordinate bounds validation.
+- DRF throttling for general API usage.
+- Scoped AI Search throttle.
+- Daily AI search quota per user/session.
+- AI fake-card validation.
+- Google Places fallback for AI failures.
+- Idempotent favorite creation.
+- API routes excluded from service worker cache.
+
+## Detailed Reference
+
+For full system logic, file-by-file behavior, presentation notes, and technical details, use `SystemInfo.md`.

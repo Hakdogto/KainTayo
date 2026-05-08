@@ -1,212 +1,276 @@
 # Kain Tayo
 
-Kain Tayo is a Django restaurant discovery app with two search modes:
+Kain Tayo is a mobile-first Django restaurant discovery system. It helps users find food places through fast Smart Search, automatic Nearby discovery, and an AI Food Chat that uses Gemini plus Google Places fallback logic.
 
-- **Smart Search** (fast local + external restaurant matching)
-- **AI Search** (Gemini-grounded food-place suggestions)
+The system is built for practical restaurant discovery: users can search by dish, cuisine, budget, mood, rating, open-now status, and location. It supports local database restaurants, Google Places results, favorites, recent searches, PWA installation, and presentation-friendly detail pages.
 
-It is optimized for mobile, supports voice input, and includes PWA foundations.
+## Main Features
 
-## Product overview
+- **Home page**
+  - Automatically asks for browser location on load.
+  - Shows nearby restaurants using the detected coordinates.
+  - Supports manual location override.
+  - Sends Home search query and manual location smoothly into Smart Search.
 
-Kain Tayo helps users find places to eat with:
+- **Smart Search**
+  - Natural-language search for food and restaurants.
+  - Parses budget, cuisine, mood, open-now intent, nearby intent, distance, and rating.
+  - Combines local database restaurants with Google Places results.
+  - Uses distance, rating, keyword match, filters, and optional semantic similarity for ranking.
+  - Supports vertical results or horizontal swipe cards.
+  - Persists result layout and restores search state after returning from detail pages.
 
-- natural-language query parsing (`budget`, `cuisine`, `mood`, `open now`, `near me`, rating)
-- hybrid ranking (intent + semantic similarity + rating + distance)
-- nearby browsing with optional location resolution
-- separate pages for **Favorites** and **Recent Searches**
-- restaurant detail pages with structured summaries
-- onboarding tips and accessibility-first UX touches
-- session-based state restore when navigating back from details
+- **Nearby**
+  - Automatically detects the user location on page load.
+  - Shows nearby local and Google Places restaurants.
+  - Supports manual location override and paginated Load More.
+  - Supports vertical or horizontal swipe result layout.
 
-## What is finalized
+- **AI Food Chat**
+  - Chat-style AI search page.
+  - Calls the grounded AI endpoint only when the user sends a message.
+  - Uses Gemini for grounded food suggestions.
+  - Validates AI rows so summary text cannot become fake restaurant cards.
+  - Retries malformed AI responses with a stricter repair prompt.
+  - Falls back to Google Places if Gemini is unavailable or returns unusable rows.
+  - Shows compact grouped recommendation cards with rating, price, category, area, address, hours, vibe, highlights, and source links.
 
-- Strict click-triggered API behavior on key pages (no wasteful auto-search calls)
-- Dedicated pages:
-  - `/search/` (Smart Search)
-  - `/ai-search/` (AI Search)
-  - `/favorites/`
-  - `/recent/`
-- AI reliability hardening:
-  - multiple Gemini request strategies
-  - structured parsing fallbacks (JSON, JSON-like, plaintext)
-  - clean single-card AI result rendering
-- PWA baseline:
-  - manifest endpoint
-  - service worker endpoint
-  - static app icon
-- Lighthouse/UX improvements:
-  - reduced render blocking
-  - skip link + live region updates
-  - skeleton loading + smart empty-state chips
-  - sticky mobile action bar
+- **Favorites and Recent Searches**
+  - Session-aware support for anonymous users.
+  - Supports both local restaurants and external Google Places favorites.
+  - Recent searches store the raw query, parsed filters, coordinates, and timestamp.
 
-## Tech stack
+- **Restaurant detail pages**
+  - Local and external place details share one facts-first detail template.
+  - External detail pages are populated from Google Places details.
+  - Detail payloads focus on overview, facts, practical info, and action links.
+
+- **PWA and cache freshness**
+  - Web app manifest endpoint.
+  - Service worker endpoint.
+  - Network-first strategy for HTML so deployed UI updates are visible on normal refresh.
+  - API routes and service worker script are excluded from runtime caching.
+  - PWA install bar supports dismissal.
+
+## Tech Stack
 
 - Python 3.11
 - Django 5.2
 - Django REST Framework
-- PostgreSQL (`dj-database-url`)
-- `pgvector` for semantic search
-- Gunicorn
-- WhiteNoise (static serving)
-- Leaflet map UI with Mapbox token support (OpenStreetMap fallback)
+- PostgreSQL on Render, SQLite fallback locally
+- `pgvector` for restaurant embeddings and semantic ranking
+- Google Places API for external restaurants, photos, place details, and location resolution
+- Gemini API for AI intent parsing, embeddings, and grounded AI Food Chat
+- WhiteNoise for static files
+- Gunicorn for production serving
+- Leaflet map UI with Mapbox token support and OpenStreetMap fallback
 
-## Project structure
+## Project Structure
 
-- `ai_restaurant_finder/` Django project settings and root routes
-- `restaurants/` core app (models, APIs, services, templates, static)
-- `render.yaml` Render Blueprint config
-- `build.sh` production build steps
+- `ai_restaurant_finder/`
+  - Django settings, WSGI/ASGI, and root URL include.
+- `restaurants/`
+  - Main app containing models, APIs, services, templates, static frontend code, tests, and migrations.
+- `restaurants/services/`
+  - Search parsing, AI search, Google Places, vector search, recommendations, distance logic, and detail payload builders.
+- `restaurants/static/restaurants/js/`
+  - Page-specific frontend logic for Home, Smart Search, Nearby, AI Chat, Favorites, Recent, and PWA behavior.
+- `restaurants/templates/restaurants/`
+  - Django templates for all pages.
+- `render.yaml`
+  - Render Blueprint configuration.
+- `build.sh`
+  - Production build command.
+- `SystemInfo.md`
+  - Full detailed technical guide and presentation reference.
+- `SYSTEM_OVERVIEW.md`
+  - Concise architecture and system flow overview.
 
-## Key pages
+## Key Pages
 
 - Home: `/`
 - Smart Search: `/search/`
-- AI Search: `/ai-search/`
+- AI Food Chat: `/ai-search/`
 - Nearby: `/nearby/`
 - Favorites: `/favorites/`
-- Recent: `/recent/`
-- Local detail: `/restaurant/<id>/`
-- External place detail: `/place/<place_id>/`
+- Recent Searches: `/recent/`
+- Local restaurant detail: `/restaurant/<id>/`
+- External Google Place detail: `/place/<place_id>/`
 
-## API surface
+## API Surface
 
-- Smart Search: `POST /api/search/`
-- Nearby: `GET /api/nearby/`
-- Resolve Location: `POST /api/resolve-location/`
-- AI Search: `POST /api/ai-search/`
-- Chat Assistant (query refinement): `POST /api/chat-assistant/`
-- Favorites:
-  - `GET /api/favorites/`
-  - `POST /api/favorites/add/`
-  - `DELETE /api/favorites/<type>/<id>/`
-- Search History:
-  - `GET /api/history/`
-  - `DELETE /api/history/<id>/`
-- Place Photo Proxy: `GET /api/place-photo/`
-- Manifest: `GET /manifest.webmanifest`
-- Service Worker: `GET /service-worker.js`
+- `POST /api/search/`
+  - Smart Search endpoint.
+- `GET /api/nearby/`
+  - Nearby restaurants endpoint with pagination.
+- `POST /api/resolve-location/`
+  - Resolves manual location text to coordinates.
+- `GET /api/recommendations/`
+  - Personalized recommendations based on favorites/history.
+- `GET /api/history/`
+  - Returns recent searches for the user/session.
+- `DELETE /api/history/<id>/`
+  - Deletes one recent search entry.
+- `GET /api/favorites/`
+  - Returns local and external favorites.
+- `POST /api/favorites/add/`
+  - Adds local restaurant or external Google Place favorite.
+- `DELETE /api/favorites/<type>/<id>/`
+  - Deletes a local or external favorite.
+- `GET /api/place-photo/`
+  - Proxies Google Places photo media.
+- `POST /api/chat-assistant/`
+  - Refines Smart Search queries based on assistant-like follow-up messages.
+- `POST /api/ai-search/`
+  - AI Food Chat endpoint.
+- `GET /manifest.webmanifest`
+  - PWA manifest.
+- `GET /service-worker.js`
+  - Service worker JavaScript.
+- `GET /favicon.ico`
+  - Redirects to the app icon.
 
-## AI search behavior
+## Smart Search Behavior
 
-AI Search is tuned for reliability and cleaner output:
+Smart Search receives a query and coordinates. The backend:
 
-- Gemini request attempts:
-  1. `google_search` tool + strict JSON
-  2. `google_search_retrieval`
-  3. model call without tools
-- Parser fallback chain:
-  1. strict JSON
-  2. JSON-like field extraction
-  3. plaintext list extraction
-  4. final fallback message
-- Cached grounded responses for repeated queries (10 minutes)
-- Quota and throttling guardrails to reduce abuse and cost
+1. Validates the query and coordinates.
+2. Parses the query through `parse_query()`, which may use Gemini intent parsing and falls back to deterministic parsing.
+3. Filters local `Restaurant` rows by cuisine, budget, open-now, mood, and rating.
+4. Optionally scores local rows with pgvector semantic similarity.
+5. Fetches Google Places text-search results around the selected coordinates.
+6. Computes distance with the Haversine formula.
+7. Deduplicates local and external rows.
+8. Scores each result by token match, cuisine, mood, open-now, budget, rating, distance, and semantic similarity.
+9. Stores a `SearchHistory` row for the user/session.
+10. Returns parsed filters, assistant chips, and the top ranked results.
 
-## Local development
+## AI Food Chat Behavior
 
-### 1) Install dependencies
+AI Food Chat is separate from Smart Search. It uses `/api/ai-search/` and keeps conversation history only in the current page session.
+
+The backend AI flow:
+
+1. Validates the query.
+2. Checks daily AI quota and DRF throttle limits.
+3. Calls Gemini with grounded search instructions and strict JSON requirements.
+4. Parses strict JSON, JSON-like output, or plaintext lists.
+5. Rejects invalid rows, including rows where the summary becomes a fake restaurant name.
+6. Retries malformed responses with a repair prompt.
+7. If Gemini still fails or produces no clean rows, resolves location hints and falls back to Google Places.
+8. Converts Places rows into the same AI card schema.
+9. Caches the response for 10 minutes.
+
+The frontend AI flow:
+
+1. User sends a message.
+2. A user bubble appears.
+3. A loading assistant bubble appears.
+4. The endpoint returns a summary and grouped cards.
+5. The loading bubble is replaced with the AI answer.
+6. Errors appear as assistant-style chat bubbles.
+
+## Browser Storage
+
+- Shared tips dismissal:
+  - `localStorage.kainTayoTipsDismissedV1`
+- Home manual location handoff to Smart Search:
+  - `sessionStorage.homeManualLocationForSearchV1`
+- Smart Search state restore:
+  - `sessionStorage.smartSearchStateV1`
+  - `sessionStorage.smartSearchLastOpenedUrl`
+- Smart Search layout:
+  - `localStorage.smartSearchResultsLayoutV1`
+- Nearby layout:
+  - `localStorage.nearbyResultsLayoutV1`
+- PWA install dismissal:
+  - `localStorage.kainTayoPwaInstallDismissedV1`
+
+## Local Development
+
+### 1. Install dependencies
 
 ```bash
 python -m pip install -r requirements.txt
 ```
 
-### 2) Environment variables
+### 2. Environment variables
 
-Required for local app startup:
+Useful local values:
 
-- `DEBUG=True`
-- `SECURE_SSL_REDIRECT=False`
-- `SECRET_KEY=<local-secret>`
-- `ALLOWED_HOSTS=127.0.0.1,localhost`
-- `CSRF_TRUSTED_ORIGINS=http://127.0.0.1:8000,http://localhost:8000`
+```bash
+DEBUG=True
+SECURE_SSL_REDIRECT=False
+SECRET_KEY=local-dev-secret
+ALLOWED_HOSTS=127.0.0.1,localhost
+CSRF_TRUSTED_ORIGINS=http://127.0.0.1:8000,http://localhost:8000
+```
 
 Optional integrations:
 
-- `DATABASE_URL` (falls back to SQLite)
+- `DATABASE_URL`
 - `MAPBOX_ACCESS_TOKEN`
 - `GOOGLE_MAPS_API_KEY`
 - `GEMINI_API_KEY`
 - `GEMINI_MODEL`
-- `GEMINI_EMBEDDING_MODEL` (default `text-embedding-004`)
-- `VECTOR_SEARCH_ENABLED` (default `True`)
+- `GEMINI_EMBEDDING_MODEL`
+- `VECTOR_SEARCH_ENABLED`
 - `API_ANON_RATE_LIMIT`
 - `API_USER_RATE_LIMIT`
 - `API_AI_SEARCH_RATE_LIMIT`
 
-### 3) Migrate and run
+### 3. Migrate and run
 
 ```bash
 python manage.py migrate
-python manage.py backfill_embeddings --only-missing
 python manage.py runserver
 ```
 
-## Quality checks
-
-Run tests:
+Optional embedding backfill:
 
 ```bash
+python manage.py backfill_embeddings --only-missing
+```
+
+## Quality Checks
+
+```bash
+python manage.py check
 python manage.py test
+node --check restaurants/static/restaurants/js/ai_search.js
 ```
 
-Deployment check:
+## Deployment on Render
+
+The project includes `render.yaml` and `build.sh`.
+
+Render build:
 
 ```bash
-python manage.py check --deploy
+sed -i 's/\r$//' build.sh && bash build.sh
 ```
 
-## Deployment (Render)
+Render start:
 
-Configured with:
+```bash
+python manage.py migrate && gunicorn ai_restaurant_finder.wsgi:application
+```
 
-- `render.yaml`
-- `build.sh`
-
-Render flow:
-
-- build installs dependencies and collects static files
-- start runs migrations, then Gunicorn
-
-Set env vars in Render:
+Required Render environment variables:
 
 - `SECRET_KEY`
 - `DEBUG=False`
+- `DATABASE_URL`
 - `ALLOWED_HOSTS`
 - `CSRF_TRUSTED_ORIGINS`
-- `DATABASE_URL`
-- optional map/AI keys
 
-## Security and reliability notes
+Optional but recommended:
 
-- DRF throttling enabled (anon/user + scoped AI search throttling)
-- secure headers/cookies enabled for production
-- input/query validation and coordinate bounds checks in APIs
-- idempotent favorite creation per actor/session
-- graceful fallbacks for map script issues and AI format drift
+- `GOOGLE_MAPS_API_KEY`
+- `GEMINI_API_KEY`
+- `MAPBOX_ACCESS_TOKEN`
 
-## Performance notes
+## More Documentation
 
-- cached Google Places search responses (10 min)
-- cached Google Place details (24h)
-- cached location resolve responses (6h)
-- cached AI grounded query responses (10 min)
-- DB indexes on common filter/sort fields:
-  - `cuisine`
-  - `is_open_now`
-  - `rating` (desc)
-  - `average_cost_for_two`
-
-## PWA notes
-
-- manifest endpoint serves `application/manifest+json`
-- service worker uses:
-  - network-first for HTML
-  - cache-first for static assets
-  - API routes excluded from cache
-
-## MCP note
-
-MCP usage (`user-lean-ctx`) is for development workflow only.  
-Runtime deployment does not require MCP servers.
+- `SYSTEM_OVERVIEW.md` gives the concise architecture view.
+- `SystemInfo.md` gives the detailed technical explanation and boss presentation guide.
