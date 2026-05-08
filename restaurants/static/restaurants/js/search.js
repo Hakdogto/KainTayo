@@ -1,7 +1,6 @@
 const queryInput = document.getElementById("queryInput");
 const searchBtn = document.getElementById("searchBtn");
 const voiceBtn = document.getElementById("voiceBtn");
-const refreshLocationBtn = document.getElementById("refreshLocationBtn");
 const setManualLocationBtn = document.getElementById("setManualLocationBtn");
 const countryInput = document.getElementById("countryInput");
 const regionInput = document.getElementById("regionInput");
@@ -487,13 +486,13 @@ function updateLocation(lat, lon, label = "") {
     userMarker = L.circleMarker([userLat, userLon], { radius: 8 }).addTo(map).bindPopup("You are here");
   }
   if (label) {
-    locationStatus.textContent = `Using location: ${label}`;
+    locationStatus.textContent = label;
   }
 }
 
 function detectLocation() {
   if (!navigator.geolocation) {
-    locationStatus.textContent = "Browser location is unavailable. Using Metro Manila default.";
+    locationStatus.textContent = "Location unavailable. Showing Metro Manila.";
     return;
   }
 
@@ -501,11 +500,11 @@ function detectLocation() {
   ensureMapReady();
   navigator.geolocation.getCurrentPosition(
     (position) => {
-      const { latitude, longitude, accuracy } = position.coords;
-      updateLocation(latitude, longitude, "Current GPS location");
+      const { latitude, longitude } = position.coords;
+      updateLocation(latitude, longitude, "Showing places near your current location.");
     },
     (error) => {
-      locationStatus.textContent = `Location error: ${error.message}. Using Metro Manila default.`;
+      locationStatus.textContent = "Location unavailable. Showing Metro Manila.";
     },
     {
       enableHighAccuracy: true,
@@ -561,7 +560,6 @@ searchBtn?.addEventListener("click", (event) => {
 queryInput?.addEventListener("keydown", (event) => {
   if (event.key === "Enter") smartSearch();
 });
-refreshLocationBtn?.addEventListener("click", detectLocation);
 setManualLocationBtn?.addEventListener("click", setManualLocation);
 searchSuggestionChips.forEach((chip) => {
   chip.addEventListener("click", () => {
@@ -576,14 +574,13 @@ searchLayoutButtons.forEach((button) => {
 });
 mobileSearchActionBtn?.addEventListener("click", () => smartSearch());
 mobileLocationActionBtn?.addEventListener("click", () => {
-  detectLocation();
   if (manualLocationDetails) {
     manualLocationDetails.open = true;
   }
   countryInput?.focus();
 });
 
-locationStatus.textContent = "Using default location. Tap Use My Current Location or Set Location before searching.";
+detectLocation();
 
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 if (SpeechRecognition) {

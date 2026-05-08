@@ -56,21 +56,32 @@ async function loadNearbyByLocation(latitude, longitude) {
 
 function detectHomeLocation() {
   if (!navigator.geolocation) {
-    homeLocationStatus.textContent = "Location services are unavailable. Showing default recommendations.";
+    if (homeLocationStatus) {
+      homeLocationStatus.textContent = "Location unavailable. Showing Metro Manila.";
+    }
     loadNearbyByLocation(14.5995, 120.9842).catch(() => {});
     return;
   }
 
+  if (homeLocationStatus) {
+    homeLocationStatus.textContent = "Detecting your location...";
+  }
   navigator.geolocation.getCurrentPosition(
     (position) => {
       const { latitude, longitude } = position.coords;
-      homeLocationStatus.textContent = "Showing places near your current location.";
+      if (homeLocationStatus) {
+        homeLocationStatus.textContent = "Showing places near your current location.";
+      }
       loadNearbyByLocation(latitude, longitude).catch(() => {
-        homeLocationStatus.textContent = "Unable to load nearby restaurants right now.";
+        if (homeLocationStatus) {
+          homeLocationStatus.textContent = "Unable to load nearby restaurants right now.";
+        }
       });
     },
     () => {
-      homeLocationStatus.textContent = "Location access denied. Showing recommendations near Metro Manila.";
+      if (homeLocationStatus) {
+        homeLocationStatus.textContent = "Location unavailable. Showing Metro Manila.";
+      }
       loadNearbyByLocation(14.5995, 120.9842).catch(() => {});
     },
     {
@@ -185,9 +196,7 @@ homeSetLocationBtn?.addEventListener("click", setHomeManualLocation);
 });
 wireRecommendationChips();
 mountHomeOnboarding();
-if (homeLocationStatus) {
-  homeLocationStatus.textContent = "";
-}
+detectHomeLocation();
 
 const HomeSpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 if (HomeSpeechRecognition && homeVoiceBtn) {

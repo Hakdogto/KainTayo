@@ -1,6 +1,5 @@
 const nearbyList = document.getElementById("nearbyList");
 const locationStatus = document.getElementById("nearbyLocationStatus");
-const useCurrentBtn = document.getElementById("nearbyUseCurrentBtn");
 const setLocationBtn = document.getElementById("nearbySetLocationBtn");
 const countryInput = document.getElementById("nearbyCountryInput");
 const regionInput = document.getElementById("nearbyRegionInput");
@@ -85,7 +84,9 @@ function setUserLocation(lat, lon, label) {
     if (userMarker) map.removeLayer(userMarker);
     userMarker = L.circleMarker([lat, lon], { radius: 8 }).addTo(map).bindPopup("You are here");
   }
-  locationStatus.textContent = label;
+  if (locationStatus) {
+    locationStatus.textContent = label;
+  }
 }
 
 function applyNearbyLayout(layout = nearbyLayout) {
@@ -175,23 +176,31 @@ async function loadNearby({ append = false } = {}) {
 
 function detectLocation() {
   if (!navigator.geolocation) {
-    locationStatus.textContent = "Location unavailable. Using Metro Manila.";
+    if (locationStatus) {
+      locationStatus.textContent = "Location unavailable. Showing Metro Manila.";
+    }
     loadNearby().catch(() => {});
     return;
   }
 
-  locationStatus.textContent = "Detecting your location...";
+  if (locationStatus) {
+    locationStatus.textContent = "Detecting your location...";
+  }
   ensureMapReady();
   navigator.geolocation.getCurrentPosition(
     (position) => {
-      const { latitude, longitude, accuracy } = position.coords;
-      setUserLocation(latitude, longitude, `Using GPS location (${Math.round(accuracy || 0)}m accuracy).`);
+      const { latitude, longitude } = position.coords;
+      setUserLocation(latitude, longitude, "Showing places near your current location.");
       loadNearby({ append: false }).catch(() => {
-        locationStatus.textContent = "Could not load nearby restaurants.";
+        if (locationStatus) {
+          locationStatus.textContent = "Could not load nearby restaurants.";
+        }
       });
     },
     () => {
-      locationStatus.textContent = "Location denied. Using Metro Manila.";
+      if (locationStatus) {
+        locationStatus.textContent = "Location unavailable. Showing Metro Manila.";
+      }
       loadNearby({ append: false }).catch(() => {});
     },
     { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
@@ -237,7 +246,6 @@ async function setManualLocation() {
   }
 }
 
-useCurrentBtn?.addEventListener("click", detectLocation);
 setLocationBtn?.addEventListener("click", setManualLocation);
 nearbyLayoutButtons.forEach((button) => {
   button.addEventListener("click", () => {
@@ -258,5 +266,5 @@ if (loadMoreBtn) {
   });
 }
 
-locationStatus.textContent = "Showing default location. Tap Use My Current Location or Set Location to load nearby results.";
 applyNearbyLayout();
+detectLocation();
