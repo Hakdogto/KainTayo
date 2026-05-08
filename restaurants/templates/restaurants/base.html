@@ -10,6 +10,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Sora:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" href="{% static 'restaurants/icons/logo.svg' %}" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="stylesheet" href="{% static 'restaurants/css/styles.css' %}" />
     {% block extra_css %}{% endblock %}
@@ -43,6 +44,7 @@
         <button id="pwaInstallBtn" class="btn primary pwa-install-btn" type="button">
             Download App
         </button>
+        <button id="pwaInstallDismissBtn" class="pwa-install-dismiss" type="button" aria-label="Dismiss app download prompt">X</button>
     </div>
 
     <script src="{% static 'restaurants/js/main.js' %}" defer></script>

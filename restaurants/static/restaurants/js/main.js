@@ -2,6 +2,8 @@ const nav = document.getElementById("mainNav");
 const hamburgerBtn = document.getElementById("hamburgerBtn");
 const pwaInstallBar = document.getElementById("pwaInstallBar");
 const pwaInstallBtn = document.getElementById("pwaInstallBtn");
+const pwaInstallDismissBtn = document.getElementById("pwaInstallDismissBtn");
+const PWA_INSTALL_DISMISSED_KEY = "kainTayoPwaInstallDismissedV1";
 
 let deferredInstallPrompt = null;
 
@@ -24,7 +26,8 @@ function toggleInstallBar() {
   if (!pwaInstallBar) return;
   const canUseNativePrompt = Boolean(deferredInstallPrompt);
   const canUseIosFallback = isIosSafari();
-  const shouldShow = Boolean((canUseNativePrompt || canUseIosFallback) && isMobileOrTablet() && !isStandalone());
+  const dismissed = localStorage.getItem(PWA_INSTALL_DISMISSED_KEY) === "1";
+  const shouldShow = Boolean((canUseNativePrompt || canUseIosFallback) && isMobileOrTablet() && !isStandalone() && !dismissed);
   pwaInstallBar.hidden = !shouldShow;
 
   if (pwaInstallBtn) {
@@ -72,6 +75,14 @@ if (pwaInstallBtn) {
     }
 
     toggleInstallBar();
+  });
+}
+
+if (pwaInstallDismissBtn) {
+  pwaInstallDismissBtn.addEventListener("click", () => {
+    localStorage.setItem(PWA_INSTALL_DISMISSED_KEY, "1");
+    pwaInstallBar.hidden = true;
+    document.body.classList.remove("has-pwa-install-bar");
   });
 }
 

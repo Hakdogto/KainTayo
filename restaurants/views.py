@@ -5,6 +5,7 @@ from django.db.models import Count
 from django.db.models import Q
 from django.db import IntegrityError
 from django.http import Http404, HttpResponse, JsonResponse
+from django.shortcuts import redirect
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import status
@@ -916,11 +917,29 @@ def manifest_json(request):
     return JsonResponse(payload, content_type="application/manifest+json")
 
 
+def favicon_ico(request):
+    return redirect("/static/restaurants/icons/logo.svg")
+
+
 def service_worker_js(request):
     script = """
-const STATIC_CACHE = "kain-tayo-static-v1";
-const RUNTIME_CACHE = "kain-tayo-runtime-v1";
-const STATIC_ASSETS = ["/", "/search/", "/nearby/", "/ai-search/", "/manifest.webmanifest"];
+const STATIC_CACHE = "kain-tayo-static-v3";
+const RUNTIME_CACHE = "kain-tayo-runtime-v3";
+const STATIC_ASSETS = ["/manifest.webmanifest"];
+
+function isCacheableRequest(request) {
+  if (request.method !== "GET") return false;
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return false;
+  if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+  if (url.pathname.startsWith("/api/")) return false;
+  if (url.pathname === "/service-worker.js") return false;
+  return true;
+}
+
+function isCacheableResponse(response) {
+  return response && response.ok && response.type === "basic";
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(STATIC_CACHE).then((cache) => cache.addAll(STATIC_ASSETS)));
@@ -941,17 +960,17 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET") return;
-  const url = new URL(event.request.url);
-  if (url.pathname.startsWith("/api/")) return;
+  if (!isCacheableRequest(event.request)) return;
   const acceptsHtml = event.request.headers.get("accept")?.includes("text/html");
 
   if (acceptsHtml) {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
-          const clone = response.clone();
-          caches.open(RUNTIME_CACHE).then((cache) => cache.put(event.request, clone));
+          if (isCacheableResponse(response)) {
+            const clone = response.clone();
+            caches.open(RUNTIME_CACHE).then((cache) => cache.put(event.request, clone));
+          }
           return response;
         })
         .catch(() => caches.match(event.request).then((cached) => cached || caches.match("/")))
@@ -962,8 +981,10 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(caches.match(event.request).then((cached) => {
     if (cached) return cached;
     return fetch(event.request).then((response) => {
-      const clone = response.clone();
-      caches.open(RUNTIME_CACHE).then((cache) => cache.put(event.request, clone));
+      if (isCacheableResponse(response)) {
+        const clone = response.clone();
+        caches.open(RUNTIME_CACHE).then((cache) => cache.put(event.request, clone));
+      }
       return response;
     });
   }));
@@ -971,4 +992,7 @@ self.addEventListener("fetch", (event) => {
 """
     response = HttpResponse(script, content_type="application/javascript")
     response["Service-Worker-Allowed"] = "/"
+    response["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response["Pragma"] = "no-cache"
+    response["Expires"] = "0"
     return response

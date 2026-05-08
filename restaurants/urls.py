@@ -24,6 +24,7 @@ urlpatterns = [
     path("api/chat-assistant/", views.chat_assistant_api, name="api_chat_assistant"),
     path("api/ai-search/", views.ai_grounded_search_api, name="api_ai_search"),
     path("api/seed/", views.seed_demo_data_api, name="api_seed"),
+    path("favicon.ico", views.favicon_ico, name="favicon_ico"),
     path("manifest.webmanifest", views.manifest_json, name="manifest_json"),
     path("service-worker.js", views.service_worker_js, name="service_worker_js"),
 ]

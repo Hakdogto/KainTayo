@@ -29,18 +29,16 @@
             </button>
             <button class="btn primary" type="submit">Search Now</button>
         </form>
-        <p class="helper-text"><a href="/ai-search/">Use AI Search</a> for web-grounded suggestions.</p>
         <div class="recommendation-chips" id="recommendationChips">
             <button class="chip clickable-chip" type="button" data-query="chicken">Chicken</button>
             <button class="chip clickable-chip" type="button" data-query="pizza">Pizza</button>
             <button class="chip clickable-chip" type="button" data-query="korean">Korean</button>
             <button class="chip clickable-chip" type="button" data-query="quiet date place">Date Night</button>
             <button class="chip clickable-chip" type="button" data-query="burger">Burgers</button>
-            <button class="chip clickable-chip" type="button" data-query="under 500">Under 500</button>
         </div>
         <p id="homeVoiceStatus" class="helper-text">Tap the mic to speak your craving.</p>
         <details class="location-details">
-            <summary>Set location manually (optional)</summary>
+            <summary>Set location manually</summary>
             <div class="manual-location-grid home-manual-location-grid">
                 <input id="homeCountryInput" type="text" placeholder="Country (e.g., Philippines)" />
                 <input id="homeRegionInput" type="text" placeholder="State/Region (e.g., NCR)" />
@@ -48,7 +46,7 @@
                 <button id="homeSetLocationBtn" class="btn ghost" type="button">Set Location</button>
             </div>
         </details>
-        <p id="homeLocationStatus" class="helper-text">Set a location for nearby picks.</p>
+        <p id="homeLocationStatus" class="helper-text"></p>
     </div>
     <div class="hero-panel">
         <div class="mini-card visual-card craving-card">

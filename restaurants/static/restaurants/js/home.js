@@ -185,7 +185,9 @@ homeSetLocationBtn?.addEventListener("click", setHomeManualLocation);
 });
 wireRecommendationChips();
 mountHomeOnboarding();
-homeLocationStatus.textContent = "Showing default picks. Tap Set Location to load nearby results.";
+if (homeLocationStatus) {
+  homeLocationStatus.textContent = "";
+}
 
 const HomeSpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 if (HomeSpeechRecognition && homeVoiceBtn) {
