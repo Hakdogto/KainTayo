@@ -1,3 +1,4 @@
+import hashlib
 import json
 import re
 import urllib.error
@@ -5,6 +6,8 @@ import urllib.request
 
 from django.conf import settings
 from django.core.cache import cache
+
+AI_GROUNDED_CACHE_VERSION = "v2"
 
 
 def _build_prompt(query: str, location_hint: str = "") -> str:
@@ -22,6 +25,8 @@ def _build_prompt(query: str, location_hint: str = "") -> str:
         " local popularity, specialty match, and distance to the requested place."
         " Prefer standout local or specialty spots over generic chains; include chains only when"
         " they are genuinely among the strongest matches."
+        " Every result name must be a real business/place name, not a description, category,"
+        " heading, or repeated summary sentence. Never use the summary as a result card."
         " Use short useful groups such as Fried & Boneless Chicken, Grilled & Local Favorites,"
         " Unlimited Wings, Cafes, or Budget Picks when they fit."
         " Summary must be 1-2 short sentences. Each result should have practical highlights,"
@@ -29,6 +34,22 @@ def _build_prompt(query: str, location_hint: str = "") -> str:
         " Avoid repeating the same generic description across cards."
         f"{location_text}"
         f" User request: {query}"
+    )
+
+
+def _build_repair_prompt(query: str, location_hint: str = "") -> str:
+    location_text = f" near {location_hint}" if location_hint else ""
+    return (
+        "Return valid JSON only. No markdown. No prose outside JSON. "
+        "Use this exact schema: "
+        '{"summary": string, "results": [{"name": string, "group": string, "category": string, '
+        '"why": string, "vibe": string, "highlights": string, "area": string, "address": string, '
+        '"rating_hint": string, "review_hint": string, "hours_hint": string, "price_hint": string, '
+        '"source_url": string, "confidence": number}]}. '
+        "The results array must contain 5-6 real food business names only. "
+        "Do not put a summary, heading, dish category, or descriptive sentence in name. "
+        "Prefer local/specialty favorites over generic chains when possible. "
+        f"User request: {query}{location_text}"
     )
 
 
@@ -134,6 +155,79 @@ def _bounded_text(row: dict, key: str, limit: int) -> str:
     return str(row.get(key, "")).strip()[:limit]
 
 
+def _looks_like_summary_text(value: str, summary: str = "") -> bool:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if not text:
+        return True
+    lowered = text.lower()
+    summary_lowered = re.sub(r"\s+", " ", str(summary or "")).strip().lower()
+    if summary_lowered and (
+        lowered == summary_lowered
+        or lowered in summary_lowered
+        or summary_lowered in lowered
+    ):
+        return True
+    summary_starters = (
+        "discover ",
+        "here are ",
+        "these ",
+        "this ",
+        "the best ",
+        "top spots ",
+        "top picks ",
+        "best places ",
+        "for your ",
+    )
+    if lowered.startswith(summary_starters):
+        return True
+    if len(text.split()) > 10:
+        return True
+    if len(text) > 90:
+        return True
+    if text.endswith(".") and len(text.split()) > 4:
+        return True
+    return False
+
+
+def _detail_looks_like_summary(value: str, summary: str = "") -> bool:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if not text:
+        return True
+    lowered = text.lower()
+    summary_lowered = re.sub(r"\s+", " ", str(summary or "")).strip().lower()
+    if summary_lowered and (
+        lowered == summary_lowered
+        or (len(lowered) > 40 and lowered in summary_lowered)
+        or (len(summary_lowered) > 40 and summary_lowered in lowered)
+    ):
+        return True
+    return lowered.startswith(("discover ", "here are ", "these establishments ", "top spots "))
+
+
+def _valid_business_row(row: dict, summary: str = "") -> bool:
+    if not isinstance(row, dict):
+        return False
+    name = str(row.get("name", "")).strip()
+    if _looks_like_summary_text(name, summary=summary):
+        return False
+    category = str(row.get("category", "")).strip().lower()
+    if name.lower() in {"restaurant", "food", "chicken", "top picks", "best chicken"}:
+        return False
+    if category in {"summary", "heading", "recommendation"}:
+        return False
+    detail_text = " ".join(
+        str(row.get(key, "")).strip()
+        for key in ("why", "highlights", "vibe", "address", "area", "rating_hint", "review_hint")
+    )
+    if not detail_text.strip():
+        return False
+    if _detail_looks_like_summary(str(row.get("why", "")), summary=summary) and _detail_looks_like_summary(
+        str(row.get("highlights", "")), summary=summary
+    ):
+        return False
+    return True
+
+
 def _extract_plaintext_results(text: str) -> dict | None:
     cleaned = str(text or "").strip()
     if not cleaned:
@@ -222,6 +316,33 @@ def _build_plaintext_request_payload(query: str, location_hint: str) -> dict:
     }
 
 
+def _build_repair_request_payload(query: str, location_hint: str) -> dict:
+    return {
+        "system_instruction": {
+            "parts": [
+                {
+                    "text": (
+                        "Output valid JSON only. Include real food business names only."
+                    )
+                }
+            ]
+        },
+        "contents": [
+            {
+                "parts": [
+                    {"text": _build_repair_prompt(query=query, location_hint=location_hint)}
+                ]
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.1,
+            "maxOutputTokens": 1600,
+            "responseMimeType": "application/json",
+        },
+        "tools": [{"google_search": {}}],
+    }
+
+
 def _call_gemini(payload: dict, timeout: int = 12):
     request = urllib.request.Request(
         (
@@ -236,11 +357,70 @@ def _call_gemini(payload: dict, timeout: int = 12):
         return json.loads(response.read().decode("utf-8"))
 
 
+def _extract_text_from_body(body: dict) -> str:
+    text_parts = []
+    for candidate in body.get("candidates", []):
+        content = candidate.get("content", {})
+        for part in content.get("parts", []):
+            if part.get("text"):
+                text_parts.append(str(part.get("text")))
+    return "\n".join(text_parts).strip()
+
+
+def _parse_ai_text(text: str) -> dict | None:
+    parsed = _extract_json_candidate(text)
+    if not isinstance(parsed, dict):
+        parsed = _extract_json_like_results(text)
+    if not isinstance(parsed, dict):
+        parsed = _extract_plaintext_results(text)
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _normalize_results(parsed: dict) -> list[dict]:
+    summary = str(parsed.get("summary", "")).strip()
+    results = parsed.get("results", [])
+    if not isinstance(results, list):
+        return []
+
+    normalized = []
+    for row in results[:8]:
+        if not _valid_business_row(row, summary=summary):
+            continue
+        category = str(row.get("category", "")).strip().lower()
+        name = str(row.get("name", "")).strip()[:120]
+        try:
+            confidence = float(row.get("confidence", 0) or 0)
+        except (TypeError, ValueError):
+            confidence = 0
+        normalized.append(
+            {
+                "name": name,
+                "category": category or "restaurant",
+                "group": _bounded_text(row, "group", 80),
+                "why": _bounded_text(row, "why", 240),
+                "vibe": _bounded_text(row, "vibe", 160),
+                "highlights": _bounded_text(row, "highlights", 220),
+                "area": _bounded_text(row, "area", 140),
+                "address": _bounded_text(row, "address", 220),
+                "rating_hint": _bounded_text(row, "rating_hint", 60),
+                "review_hint": _bounded_text(row, "review_hint", 80),
+                "hours_hint": _bounded_text(row, "hours_hint", 120),
+                "price_hint": _bounded_text(row, "price_hint", 80),
+                "source_url": _bounded_text(row, "source_url", 350),
+                "confidence": max(0.0, min(confidence, 1.0)),
+            }
+        )
+    return normalized
+
+
 def run_grounded_food_search(query: str, location_hint: str = "") -> dict:
     if not settings.GEMINI_API_KEY:
         return _fallback_payload(query)
 
-    cache_key = f"ai_grounded:{query.strip().lower()}|{location_hint.strip().lower()}"
+    cache_fingerprint = hashlib.sha256(
+        f"{query.strip().lower()}|{location_hint.strip().lower()}".encode("utf-8")
+    ).hexdigest()
+    cache_key = f"ai_grounded:{AI_GROUNDED_CACHE_VERSION}:{cache_fingerprint}"
     cached = cache.get(cache_key)
     if isinstance(cached, dict):
         return cached
@@ -278,40 +458,19 @@ def run_grounded_food_search(query: str, location_hint: str = "") -> dict:
         payload["error_code"] = last_error_code
         return payload
 
-    text_parts = []
-    for candidate in body.get("candidates", []):
-        content = candidate.get("content", {})
-        for part in content.get("parts", []):
-            if part.get("text"):
-                text_parts.append(str(part.get("text")))
-    text = "\n".join(text_parts).strip()
+    text = _extract_text_from_body(body)
     if not text:
         return _fallback_payload(query)
 
-    parsed = _extract_json_candidate(text)
-    if not isinstance(parsed, dict):
-        parsed = _extract_json_like_results(text)
-    if not isinstance(parsed, dict):
-        parsed = _extract_plaintext_results(text)
+    parsed = _parse_ai_text(text)
     if not isinstance(parsed, dict):
         try:
             retry_body = _call_gemini(
-                _build_plaintext_request_payload(query, location_hint),
+                _build_repair_request_payload(query, location_hint),
                 timeout=8,
             )
-            retry_text_parts = []
-            for candidate in retry_body.get("candidates", []):
-                content = candidate.get("content", {})
-                for part in content.get("parts", []):
-                    if part.get("text"):
-                        retry_text_parts.append(str(part.get("text")))
-            retry_text = "\n".join(retry_text_parts).strip()
-            parsed = _extract_plaintext_results(retry_text)
-            if isinstance(parsed, dict):
-                parsed["summary"] = (
-                    parsed.get("summary")
-                    or "Here are restaurant suggestions from AI fallback formatting."
-                )
+            retry_text = _extract_text_from_body(retry_body)
+            parsed = _parse_ai_text(retry_text)
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, ValueError):
             parsed = None
     if not isinstance(parsed, dict):
@@ -319,40 +478,26 @@ def run_grounded_food_search(query: str, location_hint: str = "") -> dict:
         payload["error_code"] = "parse_error"
         return payload
 
-    results = parsed.get("results", [])
-    if not isinstance(results, list):
-        results = []
-
-    normalized = []
-    for row in results[:8]:
-        if not isinstance(row, dict):
-            continue
-        category = str(row.get("category", "")).strip().lower()
-        name = str(row.get("name", "")).strip()
-        if not name:
-            continue
+    normalized = _normalize_results(parsed)
+    if not normalized:
         try:
-            confidence = float(row.get("confidence", 0) or 0)
-        except (TypeError, ValueError):
-            confidence = 0
-        normalized.append(
-            {
-                "name": name,
-                "category": category or "restaurant",
-                "group": _bounded_text(row, "group", 80),
-                "why": _bounded_text(row, "why", 240),
-                "vibe": _bounded_text(row, "vibe", 160),
-                "highlights": _bounded_text(row, "highlights", 220),
-                "area": _bounded_text(row, "area", 140),
-                "address": _bounded_text(row, "address", 220),
-                "rating_hint": _bounded_text(row, "rating_hint", 60),
-                "review_hint": _bounded_text(row, "review_hint", 80),
-                "hours_hint": _bounded_text(row, "hours_hint", 120),
-                "price_hint": _bounded_text(row, "price_hint", 80),
-                "source_url": _bounded_text(row, "source_url", 350),
-                "confidence": max(0.0, min(confidence, 1.0)),
-            }
-        )
+            retry_body = _call_gemini(
+                _build_repair_request_payload(query, location_hint),
+                timeout=8,
+            )
+            retry_text = _extract_text_from_body(retry_body)
+            retry_parsed = _parse_ai_text(retry_text)
+            if isinstance(retry_parsed, dict):
+                retry_normalized = _normalize_results(retry_parsed)
+                if retry_normalized:
+                    parsed = retry_parsed
+                    normalized = retry_normalized
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, ValueError):
+            pass
+    if not normalized:
+        payload = _fallback_payload(query)
+        payload["error_code"] = "parse_error"
+        return payload
 
     final_payload = {
         "summary": str(parsed.get("summary", "")).strip()

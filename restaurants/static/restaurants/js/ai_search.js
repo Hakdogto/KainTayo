@@ -39,6 +39,44 @@ function setAiStatus(message = "") {
   }
 }
 
+function looksLikeSummaryText(value = "") {
+  const text = cleanText(value);
+  if (!text) return true;
+  const lower = text.toLowerCase();
+  const starters = [
+    "discover ",
+    "here are ",
+    "these ",
+    "this ",
+    "the best ",
+    "top spots ",
+    "top picks ",
+    "best places ",
+    "for your "
+  ];
+  return (
+    starters.some((starter) => lower.startsWith(starter)) ||
+    text.split(/\s+/).length > 10 ||
+    text.length > 90 ||
+    (text.endsWith(".") && text.split(/\s+/).length > 4)
+  );
+}
+
+function hasUsefulBusinessName(row) {
+  const name = cleanText(row.name || "");
+  if (!name || row.name.toUpperCase() === "RESTAURANT" || row.name.includes('"summary"')) {
+    return false;
+  }
+  const genericNames = new Set(["restaurant", "food", "chicken", "top picks", "best chicken"]);
+  if (genericNames.has(name.toLowerCase())) {
+    return false;
+  }
+  if (looksLikeSummaryText(name)) {
+    return false;
+  }
+  return Boolean(row.why || row.highlights || row.vibe || row.address || row.area || row.ratingHint);
+}
+
 function dismissAiOnboarding() {
   localStorage.setItem(APP_TIPS_DISMISSED_KEY, "1");
   if (aiOnboardingMount) {
@@ -140,7 +178,7 @@ function cleanedResultRows(items) {
       priceHint: cleanText(item.price_hint || ""),
       sourceUrl: cleanText(item.source_url || ""),
     }))
-    .filter((row) => row.name && row.name.toUpperCase() !== "RESTAURANT" && !row.name.includes('"summary"'));
+    .filter(hasUsefulBusinessName);
 }
 
 function appendInfoLine(card, label, value) {

@@ -8,6 +8,8 @@ from .services.ai_grounded_search import (
     _extract_json_candidate,
     _extract_json_like_results,
     _extract_plaintext_results,
+    _normalize_results,
+    run_grounded_food_search,
 )
 from .services.intent_parser import parse_natural_query
 
@@ -166,6 +168,7 @@ class AiGroundedSearchParsingTests(TestCase):
         self.assertIn("generic chains", prompt)
         self.assertIn('"group": string', prompt)
         self.assertIn('"highlights": string', prompt)
+        self.assertIn("Never use the summary as a result card", prompt)
 
     def test_extract_json_candidate_handles_fenced_json(self):
         text = """```json
@@ -207,6 +210,82 @@ class AiGroundedSearchParsingTests(TestCase):
         self.assertIsInstance(parsed, dict)
         self.assertEqual(parsed.get("summary"), "Top ramen in Santa Rosa")
         self.assertGreaterEqual(len(parsed.get("results", [])), 1)
+
+    def test_normalize_results_rejects_summary_as_restaurant_card(self):
+        summary = (
+            "Discover the top spots for chicken in Santa Rosa Laguna, from classic "
+            "Filipino fried and grilled favorites to savory roasted options."
+        )
+        parsed = {
+            "summary": summary,
+            "results": [
+                {
+                    "name": summary,
+                    "category": "restaurant",
+                    "group": "Top Picks",
+                    "highlights": summary,
+                }
+            ],
+        }
+
+        self.assertEqual(_normalize_results(parsed), [])
+
+    @override_settings(GEMINI_API_KEY="demo-key", GEMINI_MODEL="demo-model")
+    @patch("restaurants.services.ai_grounded_search._call_gemini")
+    def test_grounded_search_repairs_when_parsed_rows_are_invalid(self, mock_call):
+        bad_summary = "Discover the top spots for chicken in Santa Rosa Laguna."
+        mock_call.side_effect = [
+            {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {
+                                    "text": (
+                                        '{"summary": "'
+                                        + bad_summary
+                                        + '", "results": [{"name": "'
+                                        + bad_summary
+                                        + '", "category": "restaurant", "highlights": "'
+                                        + bad_summary
+                                        + '"}]}'
+                                    )
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+            {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {
+                                    "text": (
+                                        '{"summary": "Best chicken picks in Santa Rosa.", '
+                                        '"results": [{"name": "24 Chicken Balibago", '
+                                        '"group": "Fried & Boneless Chicken", '
+                                        '"category": "Chicken", '
+                                        '"why": "Known for Korean-style boneless chicken.", '
+                                        '"highlights": "Crunchy boneless chicken with saucy flavors.", '
+                                        '"area": "Santa Rosa, Laguna", '
+                                        '"rating_hint": "4.9", '
+                                        '"review_hint": "492 reviews", '
+                                        '"confidence": 0.9}]}'
+                                    )
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+        ]
+
+        payload = run_grounded_food_search("best chicken santa rosa repair test")
+
+        self.assertEqual(payload["results"][0]["name"], "24 Chicken Balibago")
+        self.assertEqual(mock_call.call_count, 2)
 
 
 @override_settings(SECURE_SSL_REDIRECT=False)
