@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from .models import FavoriteExternalPlace, FavoriteRestaurant, Restaurant
 from .services.ai_grounded_search import (
+    _build_prompt,
     _extract_json_candidate,
     _extract_json_like_results,
     _extract_plaintext_results,
@@ -158,6 +159,14 @@ class AiGroundedSearchApiTests(TestCase):
 
 
 class AiGroundedSearchParsingTests(TestCase):
+    def test_ai_prompt_prioritizes_local_specialty_results(self):
+        prompt = _build_prompt("best chicken in santa rosa laguna")
+
+        self.assertIn("standout local or specialty spots", prompt)
+        self.assertIn("generic chains", prompt)
+        self.assertIn('"group": string', prompt)
+        self.assertIn('"highlights": string', prompt)
+
     def test_extract_json_candidate_handles_fenced_json(self):
         text = """```json
 {"summary":"ok","results":[{"name":"A"}]}

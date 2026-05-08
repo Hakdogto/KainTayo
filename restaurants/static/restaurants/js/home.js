@@ -1,5 +1,6 @@
 const nearbyGrid = document.getElementById("nearbyGrid");
 const homeLocationStatus = document.getElementById("homeLocationStatus");
+const homeSearchForm = document.querySelector(".hero-search");
 const homeQueryInput = document.getElementById("homeQueryInput");
 const homeVoiceBtn = document.getElementById("homeVoiceBtn");
 const homeVoiceStatus = document.getElementById("homeVoiceStatus");
@@ -10,6 +11,7 @@ const homeSetLocationBtn = document.getElementById("homeSetLocationBtn");
 const recommendationChips = document.getElementById("recommendationChips");
 const homeOnboardingMount = document.getElementById("homeOnboardingMount");
 const APP_TIPS_DISMISSED_KEY = "kainTayoTipsDismissedV1";
+const HOME_MANUAL_LOCATION_KEY = "homeManualLocationForSearchV1";
 
 function renderNearbyRestaurants(items) {
   if (!nearbyGrid) return;
@@ -92,14 +94,20 @@ function detectHomeLocation() {
   );
 }
 
+function getHomeManualLocationFields() {
+  return {
+    country: (homeCountryInput?.value || "").trim(),
+    region: (homeRegionInput?.value || "").trim(),
+    city: (homeCityInput?.value || "").trim(),
+  };
+}
+
 async function setHomeManualLocation() {
-  const country = (homeCountryInput?.value || "").trim();
-  const region = (homeRegionInput?.value || "").trim();
-  const city = (homeCityInput?.value || "").trim();
+  const { country, region, city } = getHomeManualLocationFields();
 
   if (!country && !region && !city) {
     homeLocationStatus.textContent = "Enter at least one field (city/region/country).";
-    return;
+    return false;
   }
   homeSetLocationBtn.disabled = true;
   homeSetLocationBtn.textContent = "Setting...";
@@ -119,9 +127,24 @@ async function setHomeManualLocation() {
       throw new Error(payload.error || "Could not resolve location.");
     }
     homeLocationStatus.textContent = `Showing places near ${payload.label || "your manual location"}.`;
+    try {
+      sessionStorage.setItem(HOME_MANUAL_LOCATION_KEY, JSON.stringify({
+        latitude: payload.latitude,
+        longitude: payload.longitude,
+        label: payload.label || "your manual location",
+        country,
+        region,
+        city,
+        savedAt: Date.now()
+      }));
+    } catch (_) {
+      // no-op for storage limitations
+    }
     loadNearbyByLocation(payload.latitude, payload.longitude);
+    return true;
   } catch (error) {
     homeLocationStatus.textContent = error.message || "Unable to resolve that location.";
+    return false;
   } finally {
     homeSetLocationBtn.disabled = false;
     homeSetLocationBtn.textContent = "Set Location";
@@ -186,6 +209,17 @@ function mountHomeOnboarding() {
 }
 
 homeSetLocationBtn?.addEventListener("click", setHomeManualLocation);
+homeSearchForm?.addEventListener("submit", async (event) => {
+  const { country, region, city } = getHomeManualLocationFields();
+  if (!country && !region && !city) return;
+
+  event.preventDefault();
+  const locationReady = await setHomeManualLocation();
+  if (!locationReady) return;
+
+  const query = (homeQueryInput?.value || "").trim();
+  window.location.href = `/search/${query ? `?q=${encodeURIComponent(query)}` : ""}`;
+});
 [homeCountryInput, homeRegionInput, homeCityInput].forEach((input) => {
   input?.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {

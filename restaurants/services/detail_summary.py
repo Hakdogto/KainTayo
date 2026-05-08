@@ -22,70 +22,64 @@ def _open_now_label(data: dict, is_external: bool) -> str:
     return ""
 
 
+def _short_text(value: str, limit: int = 180) -> str:
+    cleaned = " ".join(str(value or "").split())
+    if len(cleaned) <= limit:
+        return cleaned
+    return f"{cleaned[:limit].rstrip()}..."
+
+
+def _directions_url(data: dict, is_external: bool) -> str:
+    maps_url = str(data.get("maps_url", "")).strip()
+    if maps_url:
+        return maps_url
+    latitude = data.get("latitude")
+    longitude = data.get("longitude")
+    if not is_external and latitude is not None and longitude is not None:
+        return f"https://www.google.com/maps/search/?api=1&query={latitude},{longitude}"
+    return ""
+
+
 def build_smart_detail_payload(data: dict, is_external: bool) -> dict:
-    name = str(data.get("name", "This restaurant")).strip()
     cuisine = str(data.get("cuisine", "")).strip()
     address = str(data.get("address", "")).strip()
     rating = data.get("rating")
     budget_for_two = data.get("average_cost_for_two")
     price_level = _price_label(data.get("price_level"))
     open_now = _open_now_label(data, is_external)
-    summary_text = str(data.get("summary") or data.get("description") or "").strip()
+    overview = _short_text(str(data.get("summary") or data.get("description") or "").strip())
     phone = str(data.get("phone", "")).strip()
     website = str(data.get("website", "")).strip()
-    maps_url = str(data.get("maps_url", "")).strip()
+    directions_url = _directions_url(data, is_external)
 
-    bullets: list[str] = []
-
-    if cuisine:
-        bullets.append(f"Cuisine: {cuisine.title()}")
+    facts: list[str] = []
     if rating not in [None, "", "N/A"]:
-        bullets.append(f"Rated {rating}/5")
-    if budget_for_two:
-        bullets.append(f"Estimated budget for 2: PHP {budget_for_two}")
-    elif price_level:
-        bullets.append(f"Price range: {price_level}")
+        facts.append(f"Rated {rating}/5")
     if open_now:
-        bullets.append(open_now)
-    if address:
-        bullets.append(f"Location: {address}")
+        facts.append(open_now)
+    if cuisine:
+        facts.append(cuisine.title())
+    if budget_for_two:
+        facts.append(f"PHP {budget_for_two} for 2")
+    elif price_level:
+        facts.append(price_level)
 
-    if summary_text:
-        short_summary = summary_text[:220].rstrip()
-        if len(summary_text) > 220:
-            short_summary += "..."
-    else:
-        base = f"{name} is"
-        if cuisine:
-            base += f" a {cuisine} restaurant"
-        else:
-            base += " a restaurant"
-        if address:
-            base += f" in {address}"
-        short_summary = f"{base}. Check current hours, pricing, and branch details before visiting."
+    practical_info = [
+        item
+        for item in [
+            {"label": "Address", "value": address} if address else None,
+            {"label": "Phone", "value": phone} if phone else None,
+            {"label": "Website", "value": website} if website else None,
+            {"label": "Maps", "value": "Google Maps available"} if directions_url else None,
+        ]
+        if item
+    ]
 
     return {
-        "summary": short_summary,
-        "bullets": bullets[:5],
-        "quick_answer": short_summary,
-        "branch_contact": [
-            item
-            for item in [
-                f"Address: {address}" if address else "",
-                f"Phone: {phone}" if phone else "",
-                "Website available" if website else "",
-                "Google Maps link available" if maps_url else "",
-            ]
-            if item
-        ][:4],
-        "menu_price_snapshot": [
-            item
-            for item in [
-                f"Budget for 2: PHP {budget_for_two}" if budget_for_two else "",
-                f"Price range: {price_level}" if price_level else "",
-                f"Status: {open_now}" if open_now else "",
-                f"Rating: {rating}/5" if rating not in [None, '', 'N/A'] else "",
-            ]
-            if item
-        ][:4],
+        "overview": overview,
+        "facts": facts[:5],
+        "practical_info": practical_info,
+        "directions_url": directions_url,
+        "website": website,
+        "phone": phone,
     }

@@ -33,6 +33,12 @@ function cleanText(value = "") {
     .trim();
 }
 
+function setAiStatus(message = "") {
+  if (aiStatus) {
+    aiStatus.textContent = message;
+  }
+}
+
 function dismissAiOnboarding() {
   localStorage.setItem(APP_TIPS_DISMISSED_KEY, "1");
   if (aiOnboardingMount) {
@@ -121,13 +127,71 @@ function cleanedResultRows(items) {
   return (items || [])
     .map((item) => ({
       name: cleanText(item.name || ""),
+      group: cleanText(item.group || ""),
       category: cleanText(item.category || "restaurant"),
       area: cleanText(item.area || ""),
       why: cleanText(item.why || ""),
+      vibe: cleanText(item.vibe || ""),
+      highlights: cleanText(item.highlights || ""),
+      address: cleanText(item.address || ""),
+      ratingHint: cleanText(item.rating_hint || ""),
+      reviewHint: cleanText(item.review_hint || ""),
+      hoursHint: cleanText(item.hours_hint || ""),
       priceHint: cleanText(item.price_hint || ""),
       sourceUrl: cleanText(item.source_url || ""),
     }))
     .filter((row) => row.name && row.name.toUpperCase() !== "RESTAURANT" && !row.name.includes('"summary"'));
+}
+
+function appendInfoLine(card, label, value) {
+  if (!value) return;
+  const line = document.createElement("p");
+  line.className = "chat-result-detail";
+  const labelNode = document.createElement("strong");
+  labelNode.textContent = `${label}: `;
+  line.appendChild(labelNode);
+  line.append(document.createTextNode(value));
+  card.appendChild(line);
+}
+
+function buildResultCard(row) {
+  const card = document.createElement("article");
+  card.className = "chat-result-card";
+
+  const meta = [
+    row.ratingHint,
+    row.reviewHint,
+    row.priceHint,
+    row.category,
+    row.area
+  ].filter(Boolean).join(" | ");
+  const title = document.createElement("h3");
+  title.textContent = row.name;
+  card.appendChild(title);
+
+  if (meta) {
+    const metaText = document.createElement("p");
+    metaText.className = "chat-result-meta";
+    metaText.textContent = meta;
+    card.appendChild(metaText);
+  }
+
+  appendInfoLine(card, "Vibe", row.vibe);
+  appendInfoLine(card, "Highlights", row.highlights || row.why);
+  appendInfoLine(card, "Address", row.address);
+  appendInfoLine(card, "Hours", row.hoursHint);
+
+  if (row.sourceUrl) {
+    const source = document.createElement("a");
+    source.className = "link-btn";
+    source.href = row.sourceUrl;
+    source.target = "_blank";
+    source.rel = "noopener noreferrer";
+    source.textContent = "Source";
+    card.appendChild(source);
+  }
+
+  return card;
 }
 
 function buildRecommendationCards(rows) {
@@ -138,43 +202,33 @@ function buildRecommendationCards(rows) {
     return empty;
   }
 
-  const cards = document.createElement("div");
-  cards.className = "chat-result-cards";
-  rows.slice(0, 8).forEach((row) => {
-    const card = document.createElement("article");
-    card.className = "chat-result-card";
-
-    const meta = [row.category.toUpperCase(), row.area, row.priceHint].filter(Boolean).join(" | ");
-    const title = document.createElement("h3");
-    title.textContent = row.name;
-    card.appendChild(title);
-
-    if (meta) {
-      const metaText = document.createElement("p");
-      metaText.className = "chat-result-meta";
-      metaText.textContent = meta;
-      card.appendChild(metaText);
+  const wrapper = document.createElement("div");
+  wrapper.className = "chat-result-groups";
+  const grouped = rows.slice(0, 7).reduce((accumulator, row) => {
+    const group = row.group || "Top Picks";
+    if (!accumulator.has(group)) {
+      accumulator.set(group, []);
     }
+    accumulator.get(group).push(row);
+    return accumulator;
+  }, new Map());
 
-    if (row.why) {
-      const why = document.createElement("p");
-      why.textContent = row.why;
-      card.appendChild(why);
-    }
+  grouped.forEach((groupRows, groupName) => {
+    const section = document.createElement("section");
+    section.className = "chat-result-group";
+    const heading = document.createElement("h2");
+    heading.textContent = groupName;
+    section.appendChild(heading);
 
-    if (row.sourceUrl) {
-      const source = document.createElement("a");
-      source.className = "link-btn";
-      source.href = row.sourceUrl;
-      source.target = "_blank";
-      source.rel = "noopener noreferrer";
-      source.textContent = "Source";
-      card.appendChild(source);
-    }
-
-    cards.appendChild(card);
+    const cards = document.createElement("div");
+    cards.className = "chat-result-cards";
+    groupRows.forEach((row) => {
+      cards.appendChild(buildResultCard(row));
+    });
+    section.appendChild(cards);
+    wrapper.appendChild(section);
   });
-  return cards;
+  return wrapper;
 }
 
 function renderAssistantResponse(payload, loadingMessage) {
@@ -215,7 +269,7 @@ function renderAssistantError(message, loadingMessage = null) {
 
 function statusForPayload(payload) {
   if (payload.grounded_ok) {
-    return payload.empty_results ? "No matching food places found." : "AI search complete.";
+    return payload.empty_results ? "No matching food places found." : "Suggestions ready.";
   }
   if (payload.error_code === "network_error") {
     return "AI provider network issue. Please retry in a few seconds.";
@@ -233,14 +287,14 @@ async function runAiSearch(queryOverride = "") {
   const query = cleanText(queryOverride || aiQueryInput?.value || "");
   if (query.length < 4) {
     renderAssistantError("Enter at least 4 characters for AI search.");
-    aiStatus.textContent = "Enter at least 4 characters.";
+    setAiStatus("Enter at least 4 characters.");
     return;
   }
 
   const now = Date.now();
   if (now - lastRunAt < MIN_GAP_MS) {
     renderAssistantError("Please wait a few seconds before another AI request.");
-    aiStatus.textContent = "Please wait a few seconds.";
+    setAiStatus("Please wait a few seconds.");
     return;
   }
   if (aiBusy) return;
@@ -252,7 +306,7 @@ async function runAiSearch(queryOverride = "") {
   aiSearchBtn.disabled = true;
   aiVoiceBtn.disabled = true;
   aiSearchBtn.textContent = "Sending...";
-  aiStatus.textContent = "Looking for grounded suggestions...";
+  setAiStatus("Looking for grounded suggestions...");
   const loadingMessage = appendLoadingBubble();
 
   try {
@@ -270,12 +324,11 @@ async function runAiSearch(queryOverride = "") {
     }
 
     renderAssistantResponse(payload, loadingMessage);
-    aiQuota.textContent = `Remaining AI searches today: ${payload.remaining ?? "-"}`;
-    aiStatus.textContent = statusForPayload(payload);
+    setAiStatus(statusForPayload(payload));
   } catch (error) {
     const message = error.message || "AI search is temporarily unavailable.";
     renderAssistantError(message, loadingMessage);
-    aiStatus.textContent = message;
+    setAiStatus(message);
   } finally {
     aiBusy = false;
     aiSearchBtn.disabled = false;
@@ -311,7 +364,7 @@ if (SpeechRecognition && aiVoiceBtn) {
   aiVoiceBtn.addEventListener("click", () => {
     aiVoiceBtn.disabled = true;
     aiVoiceBtn.classList.add("listening");
-    aiStatus.textContent = "Listening...";
+    setAiStatus("Listening...");
     recognition.start();
   });
 
@@ -319,11 +372,11 @@ if (SpeechRecognition && aiVoiceBtn) {
     const transcript = cleanText(event.results?.[0]?.[0]?.transcript || "");
     if (!transcript) return;
     aiQueryInput.value = transcript;
-    aiStatus.textContent = `Heard: "${transcript}"`;
+    setAiStatus(`Heard: "${transcript}"`);
   };
 
   recognition.onerror = (event) => {
-    aiStatus.textContent = `Voice error: ${event.error}`;
+    setAiStatus(`Voice error: ${event.error}`);
   };
 
   recognition.onend = () => {
@@ -332,5 +385,5 @@ if (SpeechRecognition && aiVoiceBtn) {
   };
 } else if (aiVoiceBtn) {
   aiVoiceBtn.disabled = true;
-  aiStatus.textContent = "Voice input is not supported in this browser.";
+  setAiStatus("Voice input is not supported in this browser.");
 }

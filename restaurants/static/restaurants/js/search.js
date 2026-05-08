@@ -11,14 +11,13 @@ const searchLiveRegion = document.getElementById("searchLiveRegion");
 const resultsList = document.getElementById("resultsList");
 const parsedFilters = document.getElementById("parsedFilters");
 const searchSuggestionChips = document.querySelectorAll(".search-suggestion-chip");
-const mobileSearchActionBtn = document.getElementById("mobileSearchActionBtn");
-const mobileLocationActionBtn = document.getElementById("mobileLocationActionBtn");
 const manualLocationDetails = document.getElementById("manualLocationDetails");
 const searchOnboardingMount = document.getElementById("searchOnboardingMount");
 const searchLayoutButtons = document.querySelectorAll(".layout-toggle-btn[data-layout]");
 const SEARCH_STATE_KEY = "smartSearchStateV1";
 const APP_TIPS_DISMISSED_KEY = "kainTayoTipsDismissedV1";
 const SEARCH_LAYOUT_KEY = "smartSearchResultsLayoutV1";
+const HOME_MANUAL_LOCATION_KEY = "homeManualLocationForSearchV1";
 
 let userLat = 14.5995;
 let userLon = 120.9842;
@@ -175,6 +174,43 @@ function restoreSearchState() {
         }
       }
       announceLive(`Restored ${Array.isArray(state.payload.results) ? state.payload.results.length : 0} previous results.`);
+    }
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function applyHomeManualLocation() {
+  try {
+    const raw = sessionStorage.getItem(HOME_MANUAL_LOCATION_KEY);
+    if (!raw) return false;
+    const state = JSON.parse(raw);
+    if (!state || (Date.now() - Number(state.savedAt || 0)) > (1000 * 60 * 90)) {
+      sessionStorage.removeItem(HOME_MANUAL_LOCATION_KEY);
+      return false;
+    }
+    const latitude = Number(state.latitude);
+    const longitude = Number(state.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return false;
+    }
+
+    userLat = latitude;
+    userLon = longitude;
+    if (countryInput && typeof state.country === "string") countryInput.value = state.country;
+    if (regionInput && typeof state.region === "string") regionInput.value = state.region;
+    if (cityInput && typeof state.city === "string") cityInput.value = state.city;
+    if (locationStatus) {
+      locationStatus.textContent = `Using location: ${state.label || "manual location"}`;
+    }
+    ensureMapReady();
+    if (leafletReady && map) {
+      map.setView([userLat, userLon], 13);
+      if (userMarker) {
+        map.removeLayer(userMarker);
+      }
+      userMarker = L.circleMarker([userLat, userLon], { radius: 8 }).addTo(map).bindPopup("Selected location");
     }
     return true;
   } catch (_) {
@@ -572,15 +608,10 @@ searchLayoutButtons.forEach((button) => {
     applyResultsLayout(button.dataset.layout);
   });
 });
-mobileSearchActionBtn?.addEventListener("click", () => smartSearch());
-mobileLocationActionBtn?.addEventListener("click", () => {
-  if (manualLocationDetails) {
-    manualLocationDetails.open = true;
-  }
-  countryInput?.focus();
-});
-
-detectLocation();
+const hasHomeLocation = applyHomeManualLocation();
+if (!hasHomeLocation) {
+  detectLocation();
+}
 
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 if (SpeechRecognition) {

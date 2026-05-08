@@ -10,14 +10,23 @@ from django.core.cache import cache
 def _build_prompt(query: str, location_hint: str = "") -> str:
     location_text = f" Prioritize places near: {location_hint}." if location_hint else ""
     return (
-        "You are a restaurant and food store discovery assistant."
+        "You are a local food discovery assistant that answers like a concise Google AI food result."
         " Return JSON only with schema:"
-        ' {"summary": string, "results": [{"name": string, "category": string, "why": string, '
-        '"area": string, "price_hint": string, "source_url": string, "confidence": number}]}.'
-        " Include 5-8 results max. Only include food-related businesses like restaurants, cafes,"
-        " bakeries, milk tea, groceries, and food stalls."
-        " Exclude unrelated businesses."
-        " Keep each reason concise and practical."
+        ' {"summary": string, "results": [{"name": string, "group": string, "category": string, '
+        '"why": string, "vibe": string, "highlights": string, "area": string, "address": string, '
+        '"rating_hint": string, "review_hint": string, "hours_hint": string, "price_hint": string, '
+        '"source_url": string, "confidence": number}]}.' 
+        " Include 5-7 results max. Only include food-related businesses like restaurants, cafes,"
+        " bakeries, milk tea, groceries, and food stalls. Exclude unrelated businesses."
+        " For best/top queries, rank by dish or cuisine fit, rating strength, review volume,"
+        " local popularity, specialty match, and distance to the requested place."
+        " Prefer standout local or specialty spots over generic chains; include chains only when"
+        " they are genuinely among the strongest matches."
+        " Use short useful groups such as Fried & Boneless Chicken, Grilled & Local Favorites,"
+        " Unlimited Wings, Cafes, or Budget Picks when they fit."
+        " Summary must be 1-2 short sentences. Each result should have practical highlights,"
+        " vibe, rating/review hints when available, and concise address or hours hints when known."
+        " Avoid repeating the same generic description across cards."
         f"{location_text}"
         f" User request: {query}"
     )
@@ -26,9 +35,11 @@ def _build_prompt(query: str, location_hint: str = "") -> str:
 def _build_plaintext_fallback_prompt(query: str, location_hint: str = "") -> str:
     location_text = f" near {location_hint}" if location_hint else ""
     return (
-        "List 6 food-related places only (restaurants/cafes/bakeries/milk tea). "
+        "List 6 strong local food-related places only (restaurants/cafes/bakeries/milk tea). "
+        "Prioritize dish fit, ratings, review volume, local popularity, and specialty match. "
+        "Prefer standout local or specialty spots over generic chains unless the chain is truly relevant. "
         "Return plain text lines only in this exact format: "
-        "Name - short reason. "
+        "Name - group; rating/reviews if known; short reason. "
         "No JSON. No markdown. No code fences. "
         f"Query: {query}{location_text}"
     )
@@ -79,8 +90,15 @@ def _extract_json_like_results(text: str) -> dict | None:
     if not names:
         return None
     categories = re.findall(r'"category"\s*:\s*"([^"]+)"', cleaned)
+    groups = re.findall(r'"group"\s*:\s*"([^"]+)"', cleaned)
     whys = re.findall(r'"why"\s*:\s*"([^"]+)"', cleaned)
+    vibes = re.findall(r'"vibe"\s*:\s*"([^"]+)"', cleaned)
+    highlights = re.findall(r'"highlights"\s*:\s*"([^"]+)"', cleaned)
     areas = re.findall(r'"area"\s*:\s*"([^"]+)"', cleaned)
+    addresses = re.findall(r'"address"\s*:\s*"([^"]+)"', cleaned)
+    ratings = re.findall(r'"rating_hint"\s*:\s*"([^"]+)"', cleaned)
+    reviews = re.findall(r'"review_hint"\s*:\s*"([^"]+)"', cleaned)
+    hours = re.findall(r'"hours_hint"\s*:\s*"([^"]+)"', cleaned)
     prices = re.findall(r'"price_hint"\s*:\s*"([^"]+)"', cleaned)
 
     results = []
@@ -92,8 +110,15 @@ def _extract_json_like_results(text: str) -> dict | None:
             {
                 "name": clean_name[:120],
                 "category": (categories[index] if index < len(categories) else "restaurant")[:80],
+                "group": (groups[index] if index < len(groups) else "")[:80],
                 "why": (whys[index] if index < len(whys) else "Recommended based on grounded search.")[:220],
+                "vibe": (vibes[index] if index < len(vibes) else "")[:160],
+                "highlights": (highlights[index] if index < len(highlights) else "")[:220],
                 "area": (areas[index] if index < len(areas) else "")[:140],
+                "address": (addresses[index] if index < len(addresses) else "")[:220],
+                "rating_hint": (ratings[index] if index < len(ratings) else "")[:60],
+                "review_hint": (reviews[index] if index < len(reviews) else "")[:80],
+                "hours_hint": (hours[index] if index < len(hours) else "")[:120],
                 "price_hint": (prices[index] if index < len(prices) else "")[:80],
                 "source_url": "",
                 "confidence": 0.55,
@@ -103,6 +128,10 @@ def _extract_json_like_results(text: str) -> dict | None:
     if not results:
         return None
     return {"summary": summary[:180], "results": results}
+
+
+def _bounded_text(row: dict, key: str, limit: int) -> str:
+    return str(row.get(key, "")).strip()[:limit]
 
 
 def _extract_plaintext_results(text: str) -> dict | None:
@@ -157,6 +186,7 @@ def _build_request_payload(query: str, location_hint: str, tool_variant: str, st
                 {
                     "text": (
                         "Only return food and restaurant related businesses. Output valid JSON only."
+                        " Prioritize specific local favorites and specialty places over generic chains."
                     )
                 }
             ]
@@ -164,7 +194,7 @@ def _build_request_payload(query: str, location_hint: str, tool_variant: str, st
         "contents": [{"parts": [{"text": _build_prompt(query, location_hint=location_hint)}]}],
         "generationConfig": {
             "temperature": 0.2,
-            "maxOutputTokens": 1200,
+            "maxOutputTokens": 1800,
         },
     }
     if strict_json:
@@ -309,10 +339,17 @@ def run_grounded_food_search(query: str, location_hint: str = "") -> dict:
             {
                 "name": name,
                 "category": category or "restaurant",
-                "why": str(row.get("why", "")).strip()[:220],
-                "area": str(row.get("area", "")).strip()[:140],
-                "price_hint": str(row.get("price_hint", "")).strip()[:80],
-                "source_url": str(row.get("source_url", "")).strip()[:350],
+                "group": _bounded_text(row, "group", 80),
+                "why": _bounded_text(row, "why", 240),
+                "vibe": _bounded_text(row, "vibe", 160),
+                "highlights": _bounded_text(row, "highlights", 220),
+                "area": _bounded_text(row, "area", 140),
+                "address": _bounded_text(row, "address", 220),
+                "rating_hint": _bounded_text(row, "rating_hint", 60),
+                "review_hint": _bounded_text(row, "review_hint", 80),
+                "hours_hint": _bounded_text(row, "hours_hint", 120),
+                "price_hint": _bounded_text(row, "price_hint", 80),
+                "source_url": _bounded_text(row, "source_url", 350),
                 "confidence": max(0.0, min(confidence, 1.0)),
             }
         )
