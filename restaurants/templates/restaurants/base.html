@@ -2,10 +2,11 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <script>!function(){var t=localStorage.getItem("kainTayoThemeV1"),d=t==="dark"||(!t&&window.matchMedia("(prefers-color-scheme: dark)").matches);d&&document.documentElement.setAttribute("data-theme","dark")}();</script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Find nearby restaurants and food stores with smart and AI-powered search." />
-    <meta name="theme-color" content="#111827" />
+    <meta name="theme-color" content="#fffaf3" />
     <title>{% block title %}Kain Tayo{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,6 +14,8 @@
     <link rel="icon" href="{% static 'restaurants/icons/logo.svg' %}" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="stylesheet" href="{% static 'restaurants/css/styles.css' %}" />
+    <link rel="stylesheet" href="{% static 'restaurants/css/theme.css' %}" />
+    <script src="{% static 'restaurants/js/theme.js' %}" defer></script>
     {% block extra_css %}{% endblock %}
 </head>
 <body>
@@ -26,6 +29,12 @@
                 </span>
                 Kain Tayo
             </a>
+        </div>
+        <div class="topbar-actions">
+            <button type="button" class="theme-toggle icon-btn" aria-label="Switch to dark mode">
+                <svg class="theme-icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 14.5A8.5 8.5 0 0 1 9.5 3a7 7 0 1 0 11.5 11.5Z"/></svg>
+                <svg class="theme-icon-sun" viewBox="0 0 24 24" aria-hidden="true" hidden><path d="M12 4V2m0 20v-2M4 12H2m20 0h-2M5.6 5.6 4.2 4.2m15.6 15.6-1.4-1.4M18.4 5.6l1.4-1.4M5.6 18.4l-1.4 1.4M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"/></svg>
+            </button>
         </div>
         <nav class="main-nav" id="mainNav" aria-label="Primary navigation">
             <a href="/">Home</a>

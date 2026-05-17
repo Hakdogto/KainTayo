@@ -9,6 +9,8 @@
   --shadow: 0 16px 34px rgba(31, 36, 48, 0.09);
   --ring: rgba(232, 93, 66, 0.22);
   --max-content: 1240px;
+  --bg-glow-1: #ffefd6;
+  --bg-glow-2: #ffe3dc;
 }
 
 * {
@@ -21,8 +23,8 @@ body {
   line-height: 1.45;
   color: var(--text);
   background:
-    radial-gradient(circle at 10% 10%, #ffefd6 0%, transparent 35%),
-    radial-gradient(circle at 92% 0%, #ffe3dc 0%, transparent 30%),
+    radial-gradient(circle at 10% 10%, var(--bg-glow-1) 0%, transparent 35%),
+    radial-gradient(circle at 92% 0%, var(--bg-glow-2) 0%, transparent 30%),
     var(--bg);
 }
 
