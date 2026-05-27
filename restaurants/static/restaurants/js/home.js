@@ -232,10 +232,34 @@ wireRecommendationChips();
 mountHomeOnboarding();
 detectHomeLocation();
 
+function chooseSpeechLocale() {
+  const lang = String(navigator.language || "").toLowerCase();
+  if (lang.startsWith("fil") || lang.startsWith("tl")) {
+    return "fil-PH";
+  }
+  return "en-US";
+}
+
+function normalizeVoiceQuery(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const lowered = raw.toLowerCase();
+  const replacements = [
+    [/\bmalapit\s+sa\s+akin\b/gi, "near me"],
+    [/\bmalapit\b/gi, "near"],
+    [/\bbukas\s+ngayon\b/gi, "open now"],
+    [/\bbukas\b/gi, "open"],
+    [/\bmas\s+mura\b/gi, "cheaper"],
+    [/\bsamgyup\b/gi, "samgyupsal"],
+  ];
+  const normalized = replacements.reduce((acc, [pattern, replacement]) => acc.replace(pattern, replacement), lowered);
+  return normalized.replace(/\s{2,}/g, " ").trim();
+}
+
 const HomeSpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 if (HomeSpeechRecognition && homeVoiceBtn) {
   const recognition = new HomeSpeechRecognition();
-  recognition.lang = "en-US";
+  recognition.lang = chooseSpeechLocale();
   recognition.interimResults = false;
   recognition.maxAlternatives = 1;
 
@@ -249,7 +273,7 @@ if (HomeSpeechRecognition && homeVoiceBtn) {
   });
 
   recognition.onresult = (event) => {
-    const transcript = (event.results?.[0]?.[0]?.transcript || "").trim();
+    const transcript = normalizeVoiceQuery(event.results?.[0]?.[0]?.transcript || "");
     if (!transcript) return;
 
     if (homeQueryInput) {

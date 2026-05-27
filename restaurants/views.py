@@ -463,9 +463,44 @@ def history_api(request):
     return Response(SearchHistorySerializer(qs, many=True).data)
 
 
-@api_view(["DELETE"])
+@api_view(["DELETE", "PATCH"])
 def delete_history_item_api(request, history_id: int):
     actor_filter = _actor_filter(request)
+
+    if request.method == "PATCH":
+        item = SearchHistory.objects.filter(id=history_id, **actor_filter).first()
+        if not item:
+            return Response({"error": "History item not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        updates = {}
+        if "raw_query" in request.data:
+            updates["raw_query"] = _clean_query(request.data.get("raw_query"))
+        if "interpreted_filters" in request.data:
+            interpreted = request.data.get("interpreted_filters")
+            if interpreted is None:
+                interpreted = {}
+            if not isinstance(interpreted, dict):
+                return Response(
+                    {"error": "interpreted_filters must be an object."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            updates["interpreted_filters"] = interpreted
+        if "latitude" in request.data:
+            updates["latitude"] = _safe_float(request.data.get("latitude"), DEFAULT_LAT, -90, 90)
+        if "longitude" in request.data:
+            updates["longitude"] = _safe_float(request.data.get("longitude"), DEFAULT_LON, -180, 180)
+
+        if not updates:
+            return Response(
+                {"error": "No updatable fields provided."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        for key, value in updates.items():
+            setattr(item, key, value)
+        item.save(update_fields=list(updates.keys()))
+        return Response(SearchHistorySerializer(item).data)
+
     deleted, _ = SearchHistory.objects.filter(id=history_id, **actor_filter).delete()
     if deleted == 0:
         return Response({"error": "History item not found."}, status=status.HTTP_404_NOT_FOUND)
@@ -513,10 +548,52 @@ def favorites_api(request):
     return Response(merged)
 
 
-@api_view(["DELETE"])
+@api_view(["DELETE", "PATCH"])
 def delete_favorite_api(request, favorite_type: str, favorite_id: int):
     actor_filter = _actor_filter(request)
     normalized_type = str(favorite_type or "").strip().lower()
+
+    if request.method == "PATCH":
+        if normalized_type != "external":
+            return Response(
+                {"error": "Only external favorites can be updated."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        favorite = FavoriteExternalPlace.objects.filter(id=favorite_id, **actor_filter).first()
+        if not favorite:
+            return Response({"error": "Favorite item not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        updates = {}
+        if "name" in request.data:
+            updates["name"] = str(request.data.get("name") or "").strip()[:255] or favorite.name
+        if "cuisine" in request.data:
+            updates["cuisine"] = str(request.data.get("cuisine") or "").strip()[:120]
+        if "address" in request.data:
+            updates["address"] = str(request.data.get("address") or "").strip()[:255]
+        if "detail_url" in request.data:
+            updates["detail_url"] = str(request.data.get("detail_url") or "").strip()[:255]
+        if "rating" in request.data:
+            rating_raw = request.data.get("rating")
+            rating = None
+            try:
+                if rating_raw not in [None, ""]:
+                    rating = float(rating_raw)
+            except (TypeError, ValueError):
+                return Response({"error": "rating must be numeric."}, status=status.HTTP_400_BAD_REQUEST)
+            updates["rating"] = rating
+
+        if not updates:
+            return Response(
+                {"error": "No updatable fields provided."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        for key, value in updates.items():
+            setattr(favorite, key, value)
+        favorite.save(update_fields=list(updates.keys()))
+        return Response({"id": favorite.id, "type": "external", **FavoriteExternalPlaceSerializer(favorite).data})
+
     if normalized_type == "local":
         deleted, _ = FavoriteRestaurant.objects.filter(id=favorite_id, **actor_filter).delete()
     elif normalized_type == "external":

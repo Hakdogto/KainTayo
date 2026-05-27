@@ -240,6 +240,70 @@ python manage.py test
 node --check restaurants/static/restaurants/js/ai_search.js
 ```
 
+## Demo Checklist 
+
+This is a quick, repeatable flow to demonstrate that the system is complete, stable, and includes voice + AI/pgvector value.
+
+### Setup
+
+```bash
+python -m pip install -r requirements.txt
+python manage.py migrate
+python manage.py runserver
+```
+
+Then seed demo data (optional, for a consistent live demo):
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/seed/
+```
+
+### Demo flow
+
+- Home + nearby
+  - Open `http://127.0.0.1:8000/`.
+  - Allow location, or use the manual location fields.
+  - Confirm nearby cards render and detail navigation works.
+
+- Smart Search + voice (English/Filipino/Taglish)
+  - Open `http://127.0.0.1:8000/search/`.
+  - Tap the mic and try phrases like:
+    - “samgyup malapit sa akin”
+    - “ramen bukas ngayon”
+    - “mas mura na korean food”
+  - Confirm the query is normalized (e.g. “near me”, “open now”) and results appear.
+
+- Favorites CRUD (create/read/update/delete)
+  - From Search results, tap **Save**.
+  - Visit `http://127.0.0.1:8000/favorites/`.
+  - API checks (optional):
+
+```bash
+curl -s http://127.0.0.1:8000/api/favorites/
+# Update an external favorite (PATCH):
+# curl -X PATCH -H "Content-Type: application/json" -d '{"name":"Updated","rating":4.8}' http://127.0.0.1:8000/api/favorites/external/<id>/
+# Delete:
+# curl -X DELETE http://127.0.0.1:8000/api/favorites/external/<id>/
+```
+
+- Recent searches CRUD (create/read/update/delete)
+  - Perform a few searches.
+  - Visit `http://127.0.0.1:8000/recent/`.
+  - API checks (optional):
+
+```bash
+curl -s http://127.0.0.1:8000/api/history/
+# Update (PATCH):
+# curl -X PATCH -H "Content-Type: application/json" -d '{"raw_query":"ramen near me open now"}' http://127.0.0.1:8000/api/history/<id>/
+# Delete:
+# curl -X DELETE http://127.0.0.1:8000/api/history/<id>/
+```
+
+- AI Food Chat (Gemini + grounded fallback)
+  - Open `http://127.0.0.1:8000/ai-search/`.
+  - Ask a grounded query like: “best chicken in Santa Rosa Laguna under 500”.
+  - Confirm the response shows structured cards and the quota counter decreases.
+
 ## Deployment on Render
 
 The project includes `render.yaml` and `build.sh`.

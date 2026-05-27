@@ -2,7 +2,7 @@ from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 from unittest.mock import patch
 
-from .models import FavoriteExternalPlace, FavoriteRestaurant, Restaurant
+from .models import FavoriteExternalPlace, FavoriteRestaurant, Restaurant, SearchHistory
 from .services.ai_grounded_search import (
     _build_prompt,
     _extract_json_candidate,
@@ -72,6 +72,33 @@ class FavoritesApiTests(TestCase):
             FavoriteExternalPlace.objects.filter(place_id="places/demo-123").count(), 1
         )
 
+    def test_patch_external_favorite_updates_fields(self):
+        created = self.client.post(
+            "/api/favorites/add/",
+            {
+                "place_id": "places/demo-456",
+                "name": "Before Name",
+                "cuisine": "korean",
+                "address": "Before Address",
+                "detail_url": "/place/places/demo-456/",
+                "rating": 4.1,
+            },
+            format="json",
+        )
+        self.assertIn(created.status_code, [200, 201])
+
+        fav = FavoriteExternalPlace.objects.get(place_id="places/demo-456")
+        patched = self.client.patch(
+            f"/api/favorites/external/{fav.id}/",
+            {"name": "After Name", "rating": 4.8},
+            format="json",
+        )
+
+        self.assertEqual(patched.status_code, 200)
+        fav.refresh_from_db()
+        self.assertEqual(fav.name, "After Name")
+        self.assertEqual(float(fav.rating), 4.8)
+
 
 @override_settings(SECURE_SSL_REDIRECT=False)
 class SearchApiTests(TestCase):
@@ -107,6 +134,39 @@ class SearchApiTests(TestCase):
         self.assertIn("parsed_filters", data)
         self.assertEqual(data["parsed_filters"].get("budget"), 500)
         self.assertTrue(data["parsed_filters"].get("near_me"))
+
+
+@override_settings(SECURE_SSL_REDIRECT=False)
+class HistoryApiTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+
+    def test_patch_history_item_updates_fields(self):
+        search = self.client.post(
+            "/api/search/",
+            {
+                "query": "ramen near me",
+                "latitude": 14.5995,
+                "longitude": 120.9842,
+                "semantic": False,
+            },
+            format="json",
+        )
+        self.assertEqual(search.status_code, 200)
+
+        history = SearchHistory.objects.order_by("-searched_at").first()
+        self.assertIsNotNone(history)
+
+        patched = self.client.patch(
+            f"/api/history/{history.id}/",
+            {"raw_query": "ramen near me open now", "interpreted_filters": {"open_now": True}},
+            format="json",
+        )
+        self.assertEqual(patched.status_code, 200)
+
+        history.refresh_from_db()
+        self.assertEqual(history.raw_query, "ramen near me open now")
+        self.assertTrue(history.interpreted_filters.get("open_now"))
 
 
 @override_settings(SECURE_SSL_REDIRECT=False, REST_FRAMEWORK={
