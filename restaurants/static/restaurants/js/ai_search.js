@@ -77,6 +77,18 @@ function hasUsefulBusinessName(row) {
   return Boolean(row.why || row.highlights || row.vibe || row.address || row.area || row.ratingHint);
 }
 
+function safeExternalUrl(rawUrl = "") {
+  try {
+    const parsed = new URL(String(rawUrl || ""));
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return parsed.href;
+    }
+  } catch (error) {
+    return "";
+  }
+  return "";
+}
+
 function dismissAiOnboarding() {
   localStorage.setItem(APP_TIPS_DISMISSED_KEY, "1");
   if (aiOnboardingMount) {
@@ -175,7 +187,7 @@ function cleanedResultRows(items) {
       ratingHint: cleanText(item.rating_hint || ""),
       reviewHint: cleanText(item.review_hint || ""),
       hoursHint: cleanText(item.hours_hint || ""),
-      priceHint: cleanText(item.price_hint || ""),
+      reason: cleanText(item.reason || ""),
       sourceUrl: cleanText(item.source_url || ""),
     }))
     .filter(hasUsefulBusinessName);
@@ -192,14 +204,13 @@ function appendInfoLine(card, label, value) {
   card.appendChild(line);
 }
 
-function buildResultCard(row) {
+function buildResultCard(row, sourceLabel = "") {
   const card = document.createElement("article");
   card.className = "chat-result-card";
 
   const meta = [
     row.ratingHint,
     row.reviewHint,
-    row.priceHint,
     row.category,
     row.area
   ].filter(Boolean).join(" | ");
@@ -214,15 +225,18 @@ function buildResultCard(row) {
     card.appendChild(metaText);
   }
 
+  appendInfoLine(card, "Why this", row.reason || row.why || row.highlights);
   appendInfoLine(card, "Vibe", row.vibe);
-  appendInfoLine(card, "Highlights", row.highlights || row.why);
+  appendInfoLine(card, "Highlights", row.highlights);
   appendInfoLine(card, "Address", row.address);
   appendInfoLine(card, "Hours", row.hoursHint);
+  appendInfoLine(card, "Source", sourceLabel);
 
-  if (row.sourceUrl) {
+  const sourceUrl = safeExternalUrl(row.sourceUrl);
+  if (sourceUrl) {
     const source = document.createElement("a");
     source.className = "link-btn";
-    source.href = row.sourceUrl;
+    source.href = sourceUrl;
     source.target = "_blank";
     source.rel = "noopener noreferrer";
     source.textContent = "Source";
@@ -232,7 +246,7 @@ function buildResultCard(row) {
   return card;
 }
 
-function buildRecommendationCards(rows) {
+function buildRecommendationCards(rows, sourceLabel = "") {
   if (!rows.length) {
     const empty = document.createElement("p");
     empty.className = "empty-state";
@@ -261,7 +275,7 @@ function buildRecommendationCards(rows) {
     const cards = document.createElement("div");
     cards.className = "chat-result-cards";
     groupRows.forEach((row) => {
-      cards.appendChild(buildResultCard(row));
+      cards.appendChild(buildResultCard(row, sourceLabel));
     });
     section.appendChild(cards);
     wrapper.appendChild(section);
@@ -281,7 +295,41 @@ function renderAssistantResponse(payload, loadingMessage) {
   summary.className = "chat-summary";
   summary.textContent = cleanText(payload.summary || "AI suggestions ready.");
   bubble.appendChild(summary);
-  bubble.appendChild(buildRecommendationCards(cleanedResultRows(payload.results)));
+  if (payload.intent_summary) {
+    const intent = document.createElement("p");
+    intent.className = "ai-intent-summary";
+    intent.textContent = cleanText(payload.intent_summary);
+    bubble.appendChild(intent);
+  }
+
+  const sourceLabel = cleanText(payload.source_label || "");
+  if (sourceLabel) {
+    const source = document.createElement("p");
+    source.className = "ai-source-label";
+    source.textContent = sourceLabel;
+    bubble.appendChild(source);
+  }
+
+  bubble.appendChild(buildRecommendationCards(cleanedResultRows(payload.results), sourceLabel));
+
+  const refinementChips = Array.isArray(payload.refinement_chips) ? payload.refinement_chips : [];
+  if (refinementChips.length) {
+    const chipWrap = document.createElement("div");
+    chipWrap.className = "recommendation-chips ai-refinement-chips";
+    refinementChips.slice(0, 6).forEach((chip) => {
+      const query = cleanText(chip.query || "");
+      if (!query) return;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "chip clickable-chip";
+      button.textContent = cleanText(chip.label || query);
+      button.addEventListener("click", () => runAiSearch(query));
+      chipWrap.appendChild(button);
+    });
+    if (chipWrap.childElementCount) {
+      bubble.appendChild(chipWrap);
+    }
+  }
 
   messages.push({
     role: "assistant",
@@ -392,32 +440,10 @@ aiPromptChips.forEach((chip) => {
   });
 });
 
-function chooseSpeechLocale() {
-  const lang = String(navigator.language || "").toLowerCase();
-  if (lang.startsWith("fil") || lang.startsWith("tl")) {
-    return "fil-PH";
-  }
-  return "en-US";
-}
-
-function normalizeVoiceQuery(value = "") {
-  const raw = cleanText(value || "");
-  if (!raw) return "";
-  const lowered = raw.toLowerCase();
-  const replacements = [
-    [/\bmalapit\s+sa\s+akin\b/gi, "near me"],
-    [/\bbukas\s+ngayon\b/gi, "open now"],
-    [/\bmas\s+mura\b/gi, "cheaper"],
-    [/\bsamgyup\b/gi, "samgyupsal"],
-  ];
-  const normalized = replacements.reduce((acc, [pattern, replacement]) => acc.replace(pattern, replacement), lowered);
-  return normalized.replace(/\s{2,}/g, " ").trim();
-}
-
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 if (SpeechRecognition && aiVoiceBtn) {
   const recognition = new SpeechRecognition();
-  recognition.lang = chooseSpeechLocale();
+  recognition.lang = window.KainTayoVoice?.chooseSpeechLocale?.() || "en-US";
   recognition.interimResults = false;
   recognition.maxAlternatives = 1;
 
@@ -429,10 +455,26 @@ if (SpeechRecognition && aiVoiceBtn) {
   });
 
   recognition.onresult = (event) => {
-    const transcript = normalizeVoiceQuery(event.results?.[0]?.[0]?.transcript || "");
-    if (!transcript) return;
-    aiQueryInput.value = transcript;
-    setAiStatus(`Heard: "${transcript}"`);
+    const command = window.KainTayoVoice?.commandFor?.(event.results?.[0]?.[0]?.transcript || "") || { action: "empty", text: "" };
+    if (command.action === "empty") return;
+
+    if (command.action === "navigate") {
+      setAiStatus(`Opening ${command.url}`);
+      window.location.href = command.url;
+      return;
+    }
+
+    if (command.action === "clear") {
+      aiQueryInput.value = "";
+      setAiStatus("Composer cleared.");
+      return;
+    }
+
+    if (command.action !== "search") return;
+
+    aiQueryInput.value = command.text;
+    aiQueryInput.focus();
+    setAiStatus(`Heard: "${command.text}"`);
   };
 
   recognition.onerror = (event) => {

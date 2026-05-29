@@ -1,13 +1,23 @@
 {% extends "restaurants/base.html" %}
 {% load static %}
 
-{% block title %}Favorites | Kain Tayo{% endblock %}
+{% block title %}Saved Places | Kain Tayo{% endblock %}
 
 {% block content %}
-<section class="search-shell">
+<section class="search-shell saved-places-shell">
     <div class="search-panel">
-        <h1>Saved Favorites</h1>
-        <p>Your saved restaurants and food places.</p>
+        <div class="section-heading-row">
+            <div>
+                <h1>Saved Places</h1>
+                <p>Keep track of places you want to try, already tried, or love.</p>
+            </div>
+        </div>
+        <div class="segmented-control saved-status-tabs" id="savedStatusTabs" aria-label="Saved place status filter">
+            <button type="button" class="active" data-status="all" aria-pressed="true">All</button>
+            <button type="button" data-status="want_to_try" aria-pressed="false">Want to Try</button>
+            <button type="button" data-status="tried" aria-pressed="false">Tried</button>
+            <button type="button" data-status="favorite" aria-pressed="false">Favorite</button>
+        </div>
         <div id="favoritesList" class="results-list"></div>
     </div>
 </section>
