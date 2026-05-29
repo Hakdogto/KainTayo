@@ -560,6 +560,33 @@ a:focus-visible {
   transform: translateY(-1px);
 }
 
+.voice-cheat-sheet {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 14px;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.voice-cheat-sheet span {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 8px;
+  background: #fffaf3;
+}
+
+.voice-cheat-sheet span:first-child {
+  border-color: transparent;
+  background: transparent;
+  padding-left: 0;
+  font-weight: 800;
+}
+
+.ai-voice-cheat-sheet {
+  margin-top: 10px;
+}
+
 .home-location-control {
   display: grid;
   grid-template-columns: 1fr auto;
