@@ -8,6 +8,7 @@ from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import redirect
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.csrf import ensure_csrf_cookie
+from urllib.parse import urlparse
 from rest_framework import status
 from rest_framework.decorators import api_view, throttle_classes
 from rest_framework.response import Response
@@ -39,6 +40,48 @@ DEFAULT_LON = 120.9842
 MAX_QUERY_LENGTH = 220
 MAX_SEARCH_RADIUS_KM = 30
 AI_SEARCH_DAILY_LIMIT = 12
+SAVED_PLACE_STATUSES = {"want_to_try", "tried", "favorite"}
+SAVED_PLACE_TAGS = {
+    "date",
+    "family",
+    "study",
+    "barkada",
+    "quick_bite",
+    "nearby",
+    "craving",
+    "tried",
+}
+
+
+def _clean_saved_place_status(value, default="want_to_try") -> str:
+    status_value = str(value or default).strip().lower().replace(" ", "_")
+    if status_value not in SAVED_PLACE_STATUSES:
+        raise ValidationError("status must be one of: want_to_try, tried, favorite.")
+    return status_value
+
+
+def _clean_saved_place_tags(value) -> list[str]:
+    if value in (None, ""):
+        return []
+    if not isinstance(value, list):
+        raise ValidationError("tags must be a list.")
+    cleaned = []
+    for item in value[:8]:
+        tag = str(item or "").strip().lower().replace(" ", "_")
+        if not tag:
+            continue
+        if tag not in SAVED_PLACE_TAGS:
+            raise ValidationError(
+                "tags may only include: barkada, craving, date, family, nearby, "
+                "quick_bite, study, tried."
+            )
+        if tag not in cleaned:
+            cleaned.append(tag)
+    return cleaned
+
+
+def _clean_saved_place_note(value) -> str:
+    return str(value or "").strip()[:500]
 
 
 class AISearchRateThrottle(ScopedRateThrottle):
@@ -154,6 +197,32 @@ def _build_search_assistant_payload(query: str, parsed, results: list[dict]) -> 
         )
 
     return {"reason": reason_text, "chips": chips[:4]}
+
+
+def _build_ai_intent_summary(query: str, location_hint: str) -> str:
+    parts = [f'Looking for "{query}".']
+    if location_hint:
+        parts.append(f"Location hint: {location_hint}.")
+    parts.append("Results are ranked using grounded AI, source quality, and fallback availability.")
+    return " ".join(parts)
+
+
+def _build_ai_refinement_chips(query: str) -> list[dict]:
+    return [
+        {"label": "Closer", "query": f"{query} near me"},
+        {"label": "Open now", "query": f"{query} open now"},
+        {"label": "More local", "query": f"local {query}"},
+        {"label": "Good for groups", "query": f"{query} good for groups"},
+        {"label": "Date place", "query": f"{query} date place"},
+        {"label": "Try another area", "query": query},
+    ]
+
+
+def _safe_external_url(value: str) -> str:
+    parsed = urlparse(str(value or "").strip())
+    if parsed.scheme in {"http", "https"} and parsed.netloc:
+        return parsed.geturl()
+    return ""
 
 
 def _ensure_session(request) -> str:
@@ -524,6 +593,9 @@ def favorites_api(request):
                 "cuisine": entry.restaurant.cuisine,
                 "detail_url": f"/restaurant/{entry.restaurant_id}/",
                 "rating": entry.restaurant.rating,
+                "note": entry.note,
+                "tags": entry.tags,
+                "status": entry.status,
             }
         )
 
@@ -538,6 +610,9 @@ def favorites_api(request):
                 "cuisine": entry.cuisine,
                 "detail_url": entry.detail_url or (f"/place/{entry.place_id}/" if entry.place_id else ""),
                 "rating": entry.rating,
+                "note": entry.note,
+                "tags": entry.tags,
+                "status": entry.status,
             }
         )
 
@@ -554,26 +629,37 @@ def delete_favorite_api(request, favorite_type: str, favorite_id: int):
     normalized_type = str(favorite_type or "").strip().lower()
 
     if request.method == "PATCH":
-        if normalized_type != "external":
+        if normalized_type == "local":
+            favorite = FavoriteRestaurant.objects.filter(
+                id=favorite_id, **actor_filter
+            ).first()
+            response_type = "local"
+            serializer_class = FavoriteRestaurantSerializer
+        elif normalized_type == "external":
+            favorite = FavoriteExternalPlace.objects.filter(
+                id=favorite_id, **actor_filter
+            ).first()
+            response_type = "external"
+            serializer_class = FavoriteExternalPlaceSerializer
+        else:
             return Response(
-                {"error": "Only external favorites can be updated."},
+                {"error": "favorite_type must be 'local' or 'external'."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        favorite = FavoriteExternalPlace.objects.filter(id=favorite_id, **actor_filter).first()
         if not favorite:
             return Response({"error": "Favorite item not found."}, status=status.HTTP_404_NOT_FOUND)
 
         updates = {}
-        if "name" in request.data:
+        if normalized_type == "external" and "name" in request.data:
             updates["name"] = str(request.data.get("name") or "").strip()[:255] or favorite.name
-        if "cuisine" in request.data:
+        if normalized_type == "external" and "cuisine" in request.data:
             updates["cuisine"] = str(request.data.get("cuisine") or "").strip()[:120]
-        if "address" in request.data:
+        if normalized_type == "external" and "address" in request.data:
             updates["address"] = str(request.data.get("address") or "").strip()[:255]
-        if "detail_url" in request.data:
+        if normalized_type == "external" and "detail_url" in request.data:
             updates["detail_url"] = str(request.data.get("detail_url") or "").strip()[:255]
-        if "rating" in request.data:
+        if normalized_type == "external" and "rating" in request.data:
             rating_raw = request.data.get("rating")
             rating = None
             try:
@@ -582,6 +668,15 @@ def delete_favorite_api(request, favorite_type: str, favorite_id: int):
             except (TypeError, ValueError):
                 return Response({"error": "rating must be numeric."}, status=status.HTTP_400_BAD_REQUEST)
             updates["rating"] = rating
+        try:
+            if "note" in request.data:
+                updates["note"] = _clean_saved_place_note(request.data.get("note"))
+            if "tags" in request.data:
+                updates["tags"] = _clean_saved_place_tags(request.data.get("tags"))
+            if "status" in request.data:
+                updates["status"] = _clean_saved_place_status(request.data.get("status"))
+        except ValidationError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         if not updates:
             return Response(
@@ -592,7 +687,9 @@ def delete_favorite_api(request, favorite_type: str, favorite_id: int):
         for key, value in updates.items():
             setattr(favorite, key, value)
         favorite.save(update_fields=list(updates.keys()))
-        return Response({"id": favorite.id, "type": "external", **FavoriteExternalPlaceSerializer(favorite).data})
+        return Response(
+            {"id": favorite.id, "type": response_type, **serializer_class(favorite).data}
+        )
 
     if normalized_type == "local":
         deleted, _ = FavoriteRestaurant.objects.filter(id=favorite_id, **actor_filter).delete()
@@ -613,6 +710,14 @@ def delete_favorite_api(request, favorite_type: str, favorite_id: int):
 def add_favorite_api(request):
     restaurant_id = request.data.get("restaurant_id")
     place_id = str(request.data.get("place_id", "")).strip()
+    metadata_provided = any(key in request.data for key in ["note", "tags", "status"])
+
+    try:
+        saved_note = _clean_saved_place_note(request.data.get("note", ""))
+        saved_tags = _clean_saved_place_tags(request.data.get("tags", []))
+        saved_status = _clean_saved_place_status(request.data.get("status", "want_to_try"))
+    except ValidationError as exc:
+        return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
     actor = _actor_filter(request)
     actor_user = request.user if request.user.is_authenticated else None
@@ -631,6 +736,11 @@ def add_favorite_api(request):
                 user=actor_user,
                 session_key=actor_session_key,
                 restaurant=restaurant,
+                defaults={
+                    "note": saved_note,
+                    "tags": saved_tags,
+                    "status": saved_status,
+                },
             )
         except IntegrityError:
             favorite = FavoriteRestaurant.objects.filter(
@@ -644,6 +754,12 @@ def add_favorite_api(request):
                     status=status.HTTP_409_CONFLICT,
                 )
             created = False
+
+        if not created and metadata_provided:
+            favorite.note = saved_note
+            favorite.tags = saved_tags
+            favorite.status = saved_status
+            favorite.save(update_fields=["note", "tags", "status"])
 
         response_status = status.HTTP_201_CREATED if created else status.HTTP_200_OK
         return Response(FavoriteRestaurantSerializer(favorite).data, status=response_status)
@@ -676,29 +792,35 @@ def add_favorite_api(request):
             "address": address,
             "detail_url": detail_url,
             "rating": rating,
+            "note": saved_note,
+            "tags": saved_tags,
+            "status": saved_status,
         },
     )
     if not created:
-        changed = False
+        update_fields = []
         if name and favorite.name != name:
             favorite.name = name
-            changed = True
+            update_fields.append("name")
         if cuisine and favorite.cuisine != cuisine:
             favorite.cuisine = cuisine
-            changed = True
+            update_fields.append("cuisine")
         if address and favorite.address != address:
             favorite.address = address
-            changed = True
+            update_fields.append("address")
         if detail_url and favorite.detail_url != detail_url:
             favorite.detail_url = detail_url
-            changed = True
+            update_fields.append("detail_url")
         if rating is not None and favorite.rating != rating:
             favorite.rating = rating
-            changed = True
-        if changed:
-            favorite.save(
-                update_fields=["name", "cuisine", "address", "detail_url", "rating"]
-            )
+            update_fields.append("rating")
+        if metadata_provided:
+            favorite.note = saved_note
+            favorite.tags = saved_tags
+            favorite.status = saved_status
+            update_fields.extend(["note", "tags", "status"])
+        if update_fields:
+            favorite.save(update_fields=update_fields)
 
     response_status = status.HTTP_201_CREATED if created else status.HTTP_200_OK
     return Response(
@@ -969,6 +1091,13 @@ def ai_grounded_search_api(request):
     payload = run_grounded_food_search(query=query, location_hint=location_hint)
     payload["empty_results"] = not bool(payload.get("results"))
     payload["grounded_ok"] = bool(payload.get("grounded_ok", False))
+    payload["intent_summary"] = _build_ai_intent_summary(query, location_hint)
+    payload["refinement_chips"] = _build_ai_refinement_chips(query)
+    payload["source_label"] = "AI grounded" if payload["grounded_ok"] else "Google Places fallback"
+    for row in payload.get("results", []):
+        row["reason"] = row.get("why") or row.get("highlights") or "Matched your food request."
+        if "source_url" in row:
+            row["source_url"] = _safe_external_url(row.get("source_url", ""))
     payload["remaining"] = remaining
     return Response(payload)
 

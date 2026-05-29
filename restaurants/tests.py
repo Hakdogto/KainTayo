@@ -54,6 +54,44 @@ class FavoritesApiTests(TestCase):
             FavoriteRestaurant.objects.filter(restaurant=self.restaurant).count(), 1
         )
 
+    def test_local_saved_place_metadata_can_be_created_read_updated_and_deleted(self):
+        created = self.client.post(
+            "/api/favorites/add/",
+            {
+                "restaurant_id": self.restaurant.id,
+                "note": "Try after class",
+                "tags": ["barkada", "craving"],
+                "status": "want_to_try",
+            },
+            format="json",
+        )
+        self.assertEqual(created.status_code, 201)
+        self.assertEqual(created.json()["note"], "Try after class")
+        self.assertEqual(created.json()["tags"], ["barkada", "craving"])
+        self.assertEqual(created.json()["status"], "want_to_try")
+
+        listed = self.client.get("/api/favorites/")
+        self.assertEqual(listed.status_code, 200)
+        row = listed.json()[0]
+        self.assertEqual(row["type"], "local")
+        self.assertEqual(row["note"], "Try after class")
+        self.assertEqual(row["tags"], ["barkada", "craving"])
+        self.assertEqual(row["status"], "want_to_try")
+
+        patched = self.client.patch(
+            f"/api/favorites/local/{row['id']}/",
+            {"note": "Visited with friends", "tags": ["tried"], "status": "tried"},
+            format="json",
+        )
+        self.assertEqual(patched.status_code, 200)
+        self.assertEqual(patched.json()["note"], "Visited with friends")
+        self.assertEqual(patched.json()["tags"], ["tried"])
+        self.assertEqual(patched.json()["status"], "tried")
+
+        deleted = self.client.delete(f"/api/favorites/local/{row['id']}/")
+        self.assertEqual(deleted.status_code, 200)
+        self.assertEqual(FavoriteRestaurant.objects.count(), 0)
+
     def test_add_external_favorite_idempotent_for_same_session(self):
         payload = {
             "place_id": "places/demo-123",
@@ -98,6 +136,65 @@ class FavoritesApiTests(TestCase):
         fav.refresh_from_db()
         self.assertEqual(fav.name, "After Name")
         self.assertEqual(float(fav.rating), 4.8)
+
+    def test_external_saved_place_metadata_can_be_updated(self):
+        created = self.client.post(
+            "/api/favorites/add/",
+            {
+                "place_id": "places/demo-789",
+                "name": "Demo Cafe",
+                "cuisine": "cafe",
+                "address": "Santa Rosa, Laguna",
+                "detail_url": "/place/places/demo-789/",
+                "rating": 4.5,
+                "note": "Good for study",
+                "tags": ["study"],
+                "status": "favorite",
+            },
+            format="json",
+        )
+        self.assertEqual(created.status_code, 201)
+        favorite_id = created.json()["id"]
+
+        patched = self.client.patch(
+            f"/api/favorites/external/{favorite_id}/",
+            {
+                "note": "Try the pastries",
+                "tags": ["study", "quick_bite"],
+                "status": "tried",
+            },
+            format="json",
+        )
+
+        self.assertEqual(patched.status_code, 200)
+        self.assertEqual(patched.json()["note"], "Try the pastries")
+        self.assertEqual(patched.json()["tags"], ["study", "quick_bite"])
+        self.assertEqual(patched.json()["status"], "tried")
+
+    def test_saved_place_rejects_invalid_status_and_tags(self):
+        created = self.client.post(
+            "/api/favorites/add/",
+            {"restaurant_id": self.restaurant.id},
+            format="json",
+        )
+        self.assertEqual(created.status_code, 201)
+        favorite_id = created.json()["id"]
+
+        bad_status = self.client.patch(
+            f"/api/favorites/local/{favorite_id}/",
+            {"status": "expensive"},
+            format="json",
+        )
+        self.assertEqual(bad_status.status_code, 400)
+        self.assertIn("status", bad_status.json()["error"])
+
+        bad_tags = self.client.patch(
+            f"/api/favorites/local/{favorite_id}/",
+            {"tags": "date"},
+            format="json",
+        )
+        self.assertEqual(bad_tags.status_code, 400)
+        self.assertIn("tags", bad_tags.json()["error"])
 
 
 @override_settings(SECURE_SSL_REDIRECT=False)
@@ -207,7 +304,11 @@ class AiGroundedSearchApiTests(TestCase):
         self.assertIn("summary", data)
         self.assertIn("results", data)
         self.assertIn("remaining", data)
+        self.assertIn("intent_summary", data)
+        self.assertIn("refinement_chips", data)
+        self.assertIn("source_label", data)
         self.assertEqual(data["results"][0]["name"], "Demo Ramen House")
+        self.assertEqual(data["results"][0]["reason"], "Strong reviews")
 
     @patch("restaurants.views.run_grounded_food_search")
     def test_ai_search_quota_limit_blocks_extra_calls(self, mock_grounded):

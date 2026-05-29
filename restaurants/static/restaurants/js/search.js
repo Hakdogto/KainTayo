@@ -173,10 +173,23 @@ function renderParsedFilters(filters) {
 }
 
 function detailUrlFor(item) {
-  if (item.detail_url) return item.detail_url;
+  if (item.detail_url) {
+    try {
+      const parsed = new URL(String(item.detail_url), window.location.origin);
+      if (parsed.origin === window.location.origin && ["http:", "https:"].includes(parsed.protocol)) {
+        return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+      }
+    } catch (error) {
+      return "";
+    }
+  }
   if (typeof item.id === "number") return `/restaurant/${item.id}/`;
-  if (item.place_id) return `/place/${item.place_id}/`;
+  if (item.place_id) return `/place/${encodeURIComponent(item.place_id)}/`;
   return "";
+}
+
+function titleCase(value) {
+  return String(value || "restaurant").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function saveSearchState(payload = null) {
@@ -377,15 +390,25 @@ function renderEmptySuggestions(query = "") {
   ];
   const chips = candidates
     .filter((item, idx, arr) => item.query && arr.findIndex((x) => x.query === item.query) === idx)
-    .slice(0, 4)
-    .map((item) => `<button class="chip empty-suggestion-chip" type="button" data-query="${item.query}">${item.label}</button>`)
-    .join("");
-  resultsList.innerHTML = `
-    <div class="empty-state-card">
-      <p class="empty-state">No matching restaurants yet. Try one of these quick fixes:</p>
-      <div class="recommendation-chips">${chips}</div>
-    </div>
-  `;
+    .slice(0, 4);
+  resultsList.innerHTML = "";
+  const card = document.createElement("div");
+  card.className = "empty-state-card";
+  const copy = document.createElement("p");
+  copy.className = "empty-state";
+  copy.textContent = "No matching restaurants yet. Try one of these quick fixes:";
+  const chipWrap = document.createElement("div");
+  chipWrap.className = "recommendation-chips";
+  chips.forEach((item) => {
+    const chip = document.createElement("button");
+    chip.className = "chip empty-suggestion-chip";
+    chip.type = "button";
+    chip.dataset.query = item.query;
+    chip.textContent = item.label;
+    chipWrap.appendChild(chip);
+  });
+  card.append(copy, chipWrap);
+  resultsList.appendChild(card);
   applyResultsLayout();
   resultsList.querySelectorAll(".empty-suggestion-chip").forEach((chip) => {
     chip.addEventListener("click", () => {
@@ -425,11 +448,6 @@ function renderResults(results) {
     const wrapper = document.createElement("article");
     wrapper.className = "result-item clickable";
 
-    const hasPhoto = Boolean(item.photo_name);
-    const photoMarkup = hasPhoto
-      ? `<img class="result-photo" src="/api/place-photo/?name=${encodeURIComponent(item.photo_name)}&max_width=520" alt="${item.name}" loading="lazy" />`
-      : "";
-    const attributionMarkup = item.photo_author ? `<p class="photo-credit">Photo: ${item.photo_author}</p>` : "";
     const detailUrl = detailUrlFor(item);
     const normalizedId = Number.parseInt(item.id, 10);
     const hasPlaceId = Boolean(item.place_id);
@@ -438,20 +456,53 @@ function renderResults(results) {
       wrapper.dataset.detailUrl = detailUrl;
     }
 
-    wrapper.innerHTML = `
-      ${photoMarkup}
-      <h3>${item.name}</h3>
-      <p>${String(item.cuisine || "restaurant").toUpperCase()} | Rating ${item.rating} | ${item.distance_km} km</p>
-      <p>${item.address || ""}</p>
-      ${attributionMarkup}
-      <div class="actions">
-        <span></span>
-        <div class="action-group">
-          ${canSave ? `<button class="save-btn" data-id="${Number.isFinite(normalizedId) ? normalizedId : ""}" data-place-id="${item.place_id || ""}">Save</button>` : ""}
-          ${detailUrl ? `<a class="link-btn" href="${detailUrl}">Details</a>` : ""}
-        </div>
-      </div>
-    `;
+    if (item.photo_name) {
+      const photo = document.createElement("img");
+      photo.className = "result-photo";
+      photo.src = `/api/place-photo/?name=${encodeURIComponent(item.photo_name)}&max_width=520`;
+      photo.alt = item.name || "Restaurant photo";
+      photo.loading = "lazy";
+      wrapper.appendChild(photo);
+    }
+
+    const title = document.createElement("h3");
+    title.textContent = item.name || "Restaurant";
+    const meta = document.createElement("p");
+    meta.textContent = `${titleCase(item.cuisine).toUpperCase()} | Rating ${item.rating ?? "-"} | ${item.distance_km ?? "-"} km`;
+    const address = document.createElement("p");
+    address.textContent = item.address || "";
+    wrapper.append(title, meta, address);
+
+    if (item.photo_author) {
+      const credit = document.createElement("p");
+      credit.className = "photo-credit";
+      credit.textContent = `Photo: ${item.photo_author}`;
+      wrapper.appendChild(credit);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    const spacer = document.createElement("span");
+    const group = document.createElement("div");
+    group.className = "action-group";
+    if (canSave) {
+      const saveBtn = document.createElement("button");
+      saveBtn.className = "save-btn";
+      saveBtn.type = "button";
+      saveBtn.dataset.id = Number.isFinite(normalizedId) ? String(normalizedId) : "";
+      saveBtn.dataset.placeId = item.place_id || "";
+      saveBtn.textContent = "Save";
+      group.appendChild(saveBtn);
+    }
+    if (detailUrl) {
+      const detailLink = document.createElement("a");
+      detailLink.className = "link-btn";
+      detailLink.href = detailUrl;
+      detailLink.textContent = "Details";
+      group.appendChild(detailLink);
+    }
+    actions.append(spacer, group);
+    wrapper.appendChild(actions);
 
     if (detailUrl) {
       const prefetchDetail = () => {
@@ -500,7 +551,14 @@ function renderResults(results) {
 
     if (leafletReady && map) {
       const marker = L.marker([item.latitude, item.longitude]).addTo(map);
-      marker.bindPopup(`<b>${item.name}</b><br/>${item.address || ""}`);
+      const popup = document.createElement("div");
+      const name = document.createElement("strong");
+      name.textContent = item.name || "Restaurant";
+      const lineBreak = document.createElement("br");
+      const addressText = document.createElement("span");
+      addressText.textContent = item.address || "";
+      popup.append(name, lineBreak, addressText);
+      marker.bindPopup(popup);
       mapMarkers.push(marker);
     }
 
@@ -683,32 +741,10 @@ if (!hasHomeLocation) {
   detectLocation();
 }
 
-function chooseSpeechLocale() {
-  const lang = String(navigator.language || "").toLowerCase();
-  if (lang.startsWith("fil") || lang.startsWith("tl")) {
-    return "fil-PH";
-  }
-  return "en-US";
-}
-
-function normalizeVoiceQuery(value = "") {
-  const raw = String(value || "").trim();
-  if (!raw) return "";
-  const lowered = raw.toLowerCase();
-  const replacements = [
-    [/\bmalapit\s+sa\s+akin\b/gi, "near me"],
-    [/\bbukas\s+ngayon\b/gi, "open now"],
-    [/\bmas\s+mura\b/gi, "cheaper"],
-    [/\bsamgyup\b/gi, "samgyupsal"],
-  ];
-  const normalized = replacements.reduce((acc, [pattern, replacement]) => acc.replace(pattern, replacement), lowered);
-  return normalized.replace(/\s{2,}/g, " ").trim();
-}
-
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 if (SpeechRecognition) {
   const recognition = new SpeechRecognition();
-  recognition.lang = chooseSpeechLocale();
+  recognition.lang = window.KainTayoVoice?.chooseSpeechLocale?.() || "en-US";
   recognition.interimResults = false;
   recognition.maxAlternatives = 1;
 
@@ -724,17 +760,41 @@ if (SpeechRecognition) {
   };
 
   recognition.onresult = (event) => {
-    const transcript = normalizeVoiceQuery(event.results?.[0]?.[0]?.transcript || "");
-    if (!transcript) {
+    const command = window.KainTayoVoice?.commandFor?.(event.results?.[0]?.[0]?.transcript || "") || { action: "empty", text: "" };
+    if (command.action === "empty") {
       return;
     }
-    lastVoiceTranscript = transcript;
-    queryInput.value = transcript;
-    voiceStatus.textContent = `Heard: "${transcript}"`;
+    lastVoiceTranscript = command.text;
+    voiceStatus.textContent = `Heard: "${command.text}"`;
+
+    if (command.action === "navigate") {
+      voiceTriggeredSearch = true;
+      window.location.href = command.url;
+      return;
+    }
+
+    if (command.action === "clear") {
+      voiceTriggeredSearch = true;
+      queryInput.value = "";
+      lastPayload = null;
+      if (parsedFilters) parsedFilters.innerHTML = "";
+      if (resultsList) {
+        resultsList.innerHTML = '<p class="empty-state">Type a food request to start searching.</p>';
+      }
+      voiceStatus.textContent = "Search cleared.";
+      announceLive("Search cleared.");
+      return;
+    }
+
+    if (command.action !== "search") {
+      return;
+    }
+
+    queryInput.value = command.text;
 
     if (!voiceTriggeredSearch) {
       voiceTriggeredSearch = true;
-      smartSearch();
+      smartSearch(command.text);
     }
   };
 

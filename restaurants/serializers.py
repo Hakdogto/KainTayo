@@ -40,7 +40,7 @@ class FavoriteRestaurantSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = FavoriteRestaurant
-        fields = ["id", "restaurant", "created_at"]
+        fields = ["id", "restaurant", "note", "tags", "status", "created_at"]
 
 
 class FavoriteExternalPlaceSerializer(serializers.ModelSerializer):
@@ -54,5 +54,8 @@ class FavoriteExternalPlaceSerializer(serializers.ModelSerializer):
             "address",
             "detail_url",
             "rating",
+            "note",
+            "tags",
+            "status",
             "created_at",
         ]

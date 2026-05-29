@@ -33,12 +33,19 @@ The system is built for practical restaurant discovery: users can search by dish
   - Validates AI rows so summary text cannot become fake restaurant cards.
   - Retries malformed AI responses with a stricter repair prompt.
   - Falls back to Google Places if Gemini is unavailable or returns unusable rows.
-  - Shows compact grouped recommendation cards with rating, price, category, area, address, hours, vibe, highlights, and source links.
+  - Shows compact grouped recommendation cards with intent summaries, source labels, reasons, rating, category, area, address, hours, vibe, highlights, and source links.
+  - Offers refinement chips such as closer, open now, more local, good for groups, date place, and try another area.
 
-- **Favorites and Recent Searches**
+- **Saved Places and Recent Searches**
   - Session-aware support for anonymous users.
-  - Supports both local restaurants and external Google Places favorites.
+  - Supports both local restaurants and external Google Places saved places.
+  - Provides session-based CRUD: save, view, update note/tags/status, and delete.
+  - Saved statuses are Want to Try, Tried, and Favorite.
   - Recent searches store the raw query, parsed filters, coordinates, and timestamp.
+
+- **Voice control**
+  - Supports voice search and voice navigation on Home, Smart Search, and AI Food Chat.
+  - Handles selected English, Filipino, and Taglish commands such as "show nearby", "open saved places", "hanap samgyup malapit", and "bukas ngayon".
 
 - **Restaurant detail pages**
   - Local and external place details share one facts-first detail template.
@@ -333,6 +340,14 @@ Optional but recommended:
 - `GOOGLE_MAPS_API_KEY`
 - `GEMINI_API_KEY`
 - `MAPBOX_ACCESS_TOKEN`
+
+## Rubric Alignment Notes
+
+- CRUD is session-based through Saved Places. Users can create, read, update, and delete saved local restaurants and external Google Places without accounts.
+- Voice supports search and navigation commands, including selected Filipino/Taglish phrases.
+- AI features include Gemini grounded recommendations, Google Places fallback, intent summaries, refinement chips, source labels, per-result reasons, and pgvector semantic ranking when embeddings are available.
+- PostgreSQL is configured through `DATABASE_URL` on Render. The schema includes relationships, uniqueness constraints, session lookup indexes, and pgvector embedding storage.
+- The app does not claim menu prices from Google Places. "Cheap" and "mura" are treated as soft intent signals, not verified menu-price facts.
 
 ## More Documentation
 

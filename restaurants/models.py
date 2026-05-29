@@ -69,9 +69,19 @@ class FavoriteRestaurant(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     session_key = models.CharField(max_length=64, blank=True, default="")
+    note = models.TextField(blank=True, default="")
+    tags = models.JSONField(default=list, blank=True)
+    status = models.CharField(max_length=24, default="want_to_try")
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(
+                fields=["session_key", "-created_at"],
+                name="fav_local_session_created_idx",
+            ),
+            models.Index(fields=["user", "-created_at"], name="fav_local_user_created_idx"),
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=["user", "restaurant"], name="unique_favorite_per_user"
@@ -103,9 +113,19 @@ class FavoriteExternalPlace(models.Model):
     detail_url = models.CharField(max_length=255, blank=True)
     rating = models.DecimalField(max_digits=2, decimal_places=1, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    note = models.TextField(blank=True, default="")
+    tags = models.JSONField(default=list, blank=True)
+    status = models.CharField(max_length=24, default="want_to_try")
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(
+                fields=["session_key", "-created_at"],
+                name="fav_ext_session_created_idx",
+            ),
+            models.Index(fields=["user", "-created_at"], name="fav_ext_user_created_idx"),
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=["user", "place_id"], name="unique_external_favorite_per_user"

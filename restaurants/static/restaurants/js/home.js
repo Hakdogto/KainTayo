@@ -13,6 +13,22 @@ const homeOnboardingMount = document.getElementById("homeOnboardingMount");
 const APP_TIPS_DISMISSED_KEY = "kainTayoTipsDismissedV1";
 const HOME_MANUAL_LOCATION_KEY = "homeManualLocationForSearchV1";
 
+function safeAppPath(rawUrl, fallback = "/search/") {
+  try {
+    const parsed = new URL(String(rawUrl || ""), window.location.origin);
+    if (parsed.origin !== window.location.origin || !["http:", "https:"].includes(parsed.protocol)) {
+      return fallback;
+    }
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch (error) {
+    return fallback;
+  }
+}
+
+function titleCase(value) {
+  return String(value || "Restaurant").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 function renderNearbyRestaurants(items) {
   if (!nearbyGrid) return;
 
@@ -25,24 +41,47 @@ function renderNearbyRestaurants(items) {
   items.forEach((item) => {
     const card = document.createElement("a");
     card.className = "restaurant-card card-link";
-    card.href = item.detail_url || "/search/";
+    card.href = safeAppPath(item.detail_url);
     const hasPhoto = Boolean(item.photo_name);
-    const photoMarkup = hasPhoto
-      ? `<img class="card-thumb card-thumb-photo" src="/api/place-photo/?name=${encodeURIComponent(item.photo_name)}&max_width=520" alt="${item.name}" loading="lazy" />`
-      : `<div class="card-thumb card-thumb-default">${String(item.cuisine || "R").slice(0, 1).toUpperCase()}</div>`;
-    card.innerHTML = `
-      ${photoMarkup}
-      <div class="chip-row">
-        <span class="chip">${String(item.cuisine || "Restaurant").replace(/\b\w/g, (c) => c.toUpperCase())}</span>
-        <span class="chip">${item.distance_km ?? "-"} km</span>
-      </div>
-      <h3>${item.name}</h3>
-      <p>${item.address || item.description || ""}</p>
-      <div class="card-meta">
-        <span>${item.average_cost_for_two || "--"} / 2 pax</span>
-        <span>${item.is_open_now ? "Open" : "Closed"}</span>
-      </div>
-    `;
+
+    if (hasPhoto) {
+      const photo = document.createElement("img");
+      photo.className = "card-thumb card-thumb-photo";
+      photo.src = `/api/place-photo/?name=${encodeURIComponent(item.photo_name)}&max_width=520`;
+      photo.alt = item.name || "Restaurant photo";
+      photo.loading = "lazy";
+      card.appendChild(photo);
+    } else {
+      const thumb = document.createElement("div");
+      thumb.className = "card-thumb card-thumb-default";
+      thumb.textContent = String(item.cuisine || "R").slice(0, 1).toUpperCase();
+      card.appendChild(thumb);
+    }
+
+    const chipRow = document.createElement("div");
+    chipRow.className = "chip-row";
+    const cuisineChip = document.createElement("span");
+    cuisineChip.className = "chip";
+    cuisineChip.textContent = titleCase(item.cuisine);
+    const distanceChip = document.createElement("span");
+    distanceChip.className = "chip";
+    distanceChip.textContent = `${item.distance_km ?? "-"} km`;
+    chipRow.append(cuisineChip, distanceChip);
+
+    const title = document.createElement("h3");
+    title.textContent = item.name || "Restaurant";
+    const address = document.createElement("p");
+    address.textContent = item.address || item.description || "";
+
+    const meta = document.createElement("div");
+    meta.className = "card-meta";
+    const cost = document.createElement("span");
+    cost.textContent = `${item.average_cost_for_two || "--"} / 2 pax`;
+    const status = document.createElement("span");
+    status.textContent = item.is_open_now ? "Open" : "Closed";
+    meta.append(cost, status);
+
+    card.append(chipRow, title, address, meta);
     nearbyGrid.appendChild(card);
   });
 }
@@ -232,34 +271,10 @@ wireRecommendationChips();
 mountHomeOnboarding();
 detectHomeLocation();
 
-function chooseSpeechLocale() {
-  const lang = String(navigator.language || "").toLowerCase();
-  if (lang.startsWith("fil") || lang.startsWith("tl")) {
-    return "fil-PH";
-  }
-  return "en-US";
-}
-
-function normalizeVoiceQuery(value = "") {
-  const raw = String(value || "").trim();
-  if (!raw) return "";
-  const lowered = raw.toLowerCase();
-  const replacements = [
-    [/\bmalapit\s+sa\s+akin\b/gi, "near me"],
-    [/\bmalapit\b/gi, "near"],
-    [/\bbukas\s+ngayon\b/gi, "open now"],
-    [/\bbukas\b/gi, "open"],
-    [/\bmas\s+mura\b/gi, "cheaper"],
-    [/\bsamgyup\b/gi, "samgyupsal"],
-  ];
-  const normalized = replacements.reduce((acc, [pattern, replacement]) => acc.replace(pattern, replacement), lowered);
-  return normalized.replace(/\s{2,}/g, " ").trim();
-}
-
 const HomeSpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 if (HomeSpeechRecognition && homeVoiceBtn) {
   const recognition = new HomeSpeechRecognition();
-  recognition.lang = chooseSpeechLocale();
+  recognition.lang = window.KainTayoVoice?.chooseSpeechLocale?.() || "en-US";
   recognition.interimResults = false;
   recognition.maxAlternatives = 1;
 
@@ -273,16 +288,36 @@ if (HomeSpeechRecognition && homeVoiceBtn) {
   });
 
   recognition.onresult = (event) => {
-    const transcript = normalizeVoiceQuery(event.results?.[0]?.[0]?.transcript || "");
-    if (!transcript) return;
+    const command = window.KainTayoVoice?.commandFor?.(event.results?.[0]?.[0]?.transcript || "") || { action: "empty", text: "" };
+    if (command.action === "empty") return;
+
+    if (command.action === "navigate") {
+      if (homeVoiceStatus) {
+        homeVoiceStatus.textContent = `Opening ${command.url}`;
+      }
+      window.location.href = command.url;
+      return;
+    }
+
+    if (command.action === "clear") {
+      if (homeQueryInput) {
+        homeQueryInput.value = "";
+      }
+      if (homeVoiceStatus) {
+        homeVoiceStatus.textContent = "Search cleared.";
+      }
+      return;
+    }
+
+    if (command.action !== "search") return;
 
     if (homeQueryInput) {
-      homeQueryInput.value = transcript;
+      homeQueryInput.value = command.text;
     }
     if (homeVoiceStatus) {
-      homeVoiceStatus.textContent = `Heard: "${transcript}"`;
+      homeVoiceStatus.textContent = `Heard: "${command.text}"`;
     }
-    window.location.href = `/search/?q=${encodeURIComponent(transcript)}`;
+    window.location.href = `/search/?q=${encodeURIComponent(command.text)}`;
   };
 
   recognition.onerror = (event) => {
