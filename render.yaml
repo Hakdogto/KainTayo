@@ -1,7 +1,7 @@
 services:
   - type: web
     name: kaintayo
-    repo: https://github.com/Hakdogto/KainTayoDemoNew.git
+    repo: https://github.com/Hakdogto/KainTayo.git
     runtime: python
     plan: free
     buildCommand: "sed -i 's/\\r$//' build.sh && bash build.sh"
