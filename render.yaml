@@ -1,10 +1,10 @@
 services:
   - type: web
     name: kaintayo
-    repo: https://github.com/Hakdogto/KainTayoDemoNew.git
+    repo: https://github.com/Hakdogto/KainTayo.git
     runtime: python
     plan: free
-    buildCommand: "sed -i 's/\\r$//' build.sh && bash build.sh"
+    buildCommand: "python manage.py collectstatic --no-input"
     startCommand: "python manage.py migrate && gunicorn ai_restaurant_finder.wsgi:application"
     envVars:
       - key: PYTHON_VERSION
