@@ -1,0 +1,11 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "RAILPACK",
+    "buildCommand": "python manage.py collectstatic --no-input"
+  },
+  "deploy": {
+    "preDeployCommand": "python manage.py migrate",
+    "startCommand": "gunicorn ai_restaurant_finder.wsgi:application"
+  }
+}
